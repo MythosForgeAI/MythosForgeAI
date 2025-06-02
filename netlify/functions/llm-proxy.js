@@ -65,12 +65,8 @@ exports.handler = async function(event, context) {
     }
 
     // --- Step 5: Prepare the request to the Gemini API ---
-    // Ensure this model name is exactly what you intend to use and have access to.
-    const geminiModelName = "gemini-1.5-flash-latest"; // Or "models/gemini-2.5-flash-preview-05-20" if you are sure (without the leading 'models/' here)
-                                                     // If using "models/gemini-2.5-flash-preview-05-20", the variable should be:
-                                                     // const geminiModelNameForURL = "models/gemini-2.5-flash-preview-05-20";
-                                                     // And the URL: `https://generativelanguage.googleapis.com/v1beta/${geminiModelNameForURL}:generateContent?key=${apiKey}`;
-                                                     // Let's stick to gemini-1.5-flash-latest for now for simplicity unless you specify.
+    // UPDATED to use gemini-2.0-flash as per your latest instruction
+    const geminiModelName = "gemini-2.0-flash"; 
 
     const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModelName}:generateContent?key=${apiKey}`;
 
@@ -132,19 +128,3 @@ exports.handler = async function(event, context) {
         };
     }
 };
-```
-
-**Please perform these exact steps:**
-1.  Go to your GitHub repository.
-2.  Navigate to the file `netlify/functions/llm-proxy.js`.
-3.  Click to edit it.
-4.  **Delete all the existing content in that file.**
-5.  **Copy the entire code block above and paste it into your `llm-proxy.js` file.**
-6.  Commit the changes with a message like "Replace proxy code with known good version."
-7.  Push the changes to GitHub.
-8.  Wait for Netlify to complete the new deployment.
-9.  Then, try testing your chat application again and check your Netlify function logs.
-
-If there was a stray character or a typo causing that `SyntaxError`, this process of replacing the entire file content with a clean version should resolve it. The error you showed means the problem is right at the beginning when the code is first read, not when it's trying to do complex logic.
-
-I am here to help, and I will try my best to make the steps as clear as possib
