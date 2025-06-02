@@ -6,54 +6,39 @@
     <title>MythosForgeAI - Prototype</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Custom scrollbar for chat (optional) */
-        #chat-output::-webkit-scrollbar {
-            width: 8px;
-        }
-        #chat-output::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 10px;
-        }
-        #chat-output::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 10px;
-        }
-        #chat-output::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-        .chat-bubble {
-            max-width: 75%;
-            padding: 10px 15px;
-            border-radius: 20px;
-            margin-bottom: 10px;
-            word-wrap: break-word;
-        }
-        .user-bubble {
-            background-color: #DCF8C6; /* Light green */
-            align-self: flex-end;
-            border-bottom-right-radius: 5px;
-        }
-        .ai-bubble {
-            background-color: #E5E7EB; /* Light gray */
-            align-self: flex-start;
-            border-bottom-left-radius: 5px;
-        }
-        .message-container {
-            display: flex;
-            flex-direction: column;
-        }
+        /* ... (your existing styles remain the same) ... */
+        #chat-output::-webkit-scrollbar { width: 8px; }
+        #chat-output::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        #chat-output::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        #chat-output::-webkit-scrollbar-thumb:hover { background: #555; }
+        .chat-bubble { max-width: 75%; padding: 10px 15px; border-radius: 20px; margin-bottom: 10px; word-wrap: break-word; }
+        .user-bubble { background-color: #DCF8C6; align-self: flex-end; border-bottom-right-radius: 5px; }
+        .ai-bubble { background-color: #E5E7EB; align-self: flex-start; border-bottom-left-radius: 5px; }
+        .message-container { display: flex; flex-direction: column; }
+        .settings-input { padding: 8px; border: 1px solid #D1D5DB; border-radius: 8px; margin-bottom: 5px; width: 100%; }
     </style>
 </head>
 <body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen font-sans p-4">
 
-    <div class="w-full max-w-2xl bg-white shadow-xl rounded-lg flex flex-col h-[80vh]">
+    <div class="w-full max-w-2xl bg-white shadow-xl rounded-lg flex flex-col h-[90vh] md:h-[80vh]">
         <header class="bg-indigo-600 text-white p-4 rounded-t-lg">
-            <h1 class="text-2xl font-semibold text-center">MythosForgeAI - Chat Prototype (Live API Test)</h1>
+            <h1 class="text-2xl font-semibold text-center">MythosForgeAI - Chat Prototype (Persona & History Test)</h1>
         </header>
+
+        <div class="p-4 border-b border-gray-200 bg-gray-50">
+            <div>
+                <label for="persona-input" class="block text-sm font-medium text-gray-700">AI Persona Instructions:</label>
+                <textarea id="persona-input" rows="3" class="settings-input mt-1 focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g., You are a grumpy pirate captain named One-Eye Jack. You only care about treasure."></textarea>
+            </div>
+            <div class="mt-2">
+                <label for="max-history-input" class="block text-sm font-medium text-gray-700">Chat History Turns to Send (for testing, 1 turn = 1 user + 1 AI message):</label>
+                <input type="number" id="max-history-input" value="10" min="0" class="settings-input mt-1 focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+        </div>
 
         <div id="chat-output" class="flex-1 p-6 space-y-4 overflow-y-auto message-container">
             <div class="chat-bubble ai-bubble">
-                Hello Kyle! Ready to test the live API via Netlify. Send a message!
+                Set my persona above and send a message!
             </div>
         </div>
 
@@ -72,19 +57,20 @@
             const chatOutput = document.getElementById('chat-output');
             const messageInput = document.getElementById('message-input');
             const sendButton = document.getElementById('send-button');
+            const personaInput = document.getElementById('persona-input'); // New
+            const maxHistoryInput = document.getElementById('max-history-input'); // New
 
             if (!chatOutput) console.error("Chat output element not found!");
             if (!messageInput) console.error("Message input element not found!");
             if (!sendButton) console.error("Send button element not found!");
+            if (!personaInput) console.error("Persona input element not found!");
+            if (!maxHistoryInput) console.error("Max history input element not found!");
 
-            let conversationHistoryForAPI = [];
+            let conversationHistoryForAPI = []; // Initialize empty
 
             function displayMessage(messageText, sender) {
-                if (!chatOutput) {
-                    console.error("displayMessage called but chatOutput element is not available.");
-                    return; 
-                }
-
+                // ... (displayMessage function remains the same as previous working version)
+                if (!chatOutput) { console.error("displayMessage called but chatOutput element is not available."); return; }
                 const messageElement = document.createElement('div');
                 messageElement.classList.add('chat-bubble');
                 if (sender === 'User') {
@@ -101,16 +87,30 @@
             async function getAIResponse(userMessageText) {
                 conversationHistoryForAPI.push({ role: "user", parts: [{ text: userMessageText }] });
 
-                const yourNetlifyProxyUrl = "/.netlify/functions/llm-proxy"; 
+                const yourNetlifyProxyUrl = "/.netlify/functions/llm-proxy"; // Using relative path
+                const personaValue = personaInput.value.trim(); // Get persona from input
+                const maxHistoryTurns = parseInt(maxHistoryInput.value, 10) || 10; // Get max history turns
+                const maxHistoryItems = maxHistoryTurns * 2; // Convert turns to items (user + AI)
 
+
+                // Trim history *before* sending if it's too long (based on input field)
+                // We send the current state of conversationHistoryForAPI which includes the latest user message
+                let historyToSend = [...conversationHistoryForAPI]; // Create a copy to trim
+                if (historyToSend.length > maxHistoryItems) {
+                    historyToSend = historyToSend.slice(historyToSend.length - maxHistoryItems);
+                }
+                
                 console.log("Attempting to send to Netlify proxy:", yourNetlifyProxyUrl);
-                console.log("Sending conversation history to proxy:", JSON.stringify(conversationHistoryForAPI, null, 2));
+                console.log("Sending persona:", personaValue);
+                console.log("Sending conversation history (trimmed for API call):", JSON.stringify(historyToSend, null, 2));
+
 
                 let aiResponseText = "Error: Could not reach the AI service. Please check console."; 
 
                 try {
                     const payloadToProxy = {
-                        history: conversationHistoryForAPI 
+                        history: historyToSend, 
+                        persona: personaValue // Add persona to the payload
                     };
 
                     const response = await fetch(yourNetlifyProxyUrl, {
@@ -142,15 +142,12 @@
                     aiResponseText = "Network error or proxy is unreachable. Please check console and Netlify function logs.";
                 }
                 
+                // Add the AI's response to our *full* conversation history for the next turn
                 if (aiResponseText) { 
                     conversationHistoryForAPI.push({ role: "model", parts: [{ text: aiResponseText }] });
                 }
-                
-                const maxHistoryTurns = 10; 
-                const maxHistoryItems = maxHistoryTurns * 2; 
-                if (conversationHistoryForAPI.length > maxHistoryItems) {
-                    conversationHistoryForAPI = conversationHistoryForAPI.slice(conversationHistoryForAPI.length - maxHistoryItems);
-                }
+                // The full conversationHistoryForAPI continues to grow locally, 
+                // but only a trimmed version (`historyToSend`) is sent to the API.
 
                 if (aiResponseText) {
                      displayMessage(aiResponseText, 'AI');
@@ -158,10 +155,8 @@
             }
 
             function handleSendMessage() {
-                if (!messageInput) {
-                    console.error("handleSendMessage called but messageInput element is not available.");
-                    return; 
-                }
+                // ... (handleSendMessage function remains the same as previous working version)
+                if (!messageInput) { console.error("handleSendMessage called but messageInput element is not available."); return; }
                 const messageText = messageInput.value.trim();
                 if (messageText) {
                     displayMessage(messageText, 'User'); 
@@ -191,6 +186,145 @@
 </html>
 ```
 
-The main change here is ensuring that any text that was meant as an instruction *to you* (like the text you saw appearing at the bottom of your test site) is fully removed if it wasn't inside HTML comment tags (``) or JavaScript comments (`// ...` or `/* ... */`).
+**Key changes in `index.html`:**
+* Added a `<textarea id="persona-input">` and an `<input type="number" id="max-history-input">`.
+* The JavaScript now reads values from these inputs.
+* The `payloadToProxy` sent to your Netlify function now includes a `persona: personaValue` field.
+* The `conversationHistoryForAPI` is now trimmed to `maxHistoryItems` (derived from `max-history-input`) *before* being sent in `historyToSend`, but the local `conversationHistoryForAPI` continues to grow with all messages.
 
-Please replace the content of your `index.html` with this cleaned-up version, commit, and push. Then check your GitHub Pages site again. Hopefully, those stray comments are go
+---
+
+**Step 2: Update `llm-proxy.js` (Netlify Function)**
+
+Now, your Netlify function needs to be able to receive this `persona` string and prepend it correctly to the `contents` it sends to the Gemini API.
+
+Here's the updated `llm-proxy.js`:
+
+```javascript
+// netlify/functions/llm-proxy.js
+
+exports.handler = async function(event, context) {
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+        console.error("GEMINI_API_KEY is not set in Netlify environment variables.");
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: "Server configuration error: API key missing." })
+        };
+    }
+
+    if (event.httpMethod !== "POST") {
+        return {
+            statusCode: 405,
+            body: JSON.stringify({ error: "Only POST requests are allowed." })
+        };
+    }
+
+    let requestBody;
+    try {
+        requestBody = JSON.parse(event.body);
+    } catch (error) {
+        console.error("Invalid JSON in request body:", event.body);
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: "Invalid JSON provided in the request." })
+        };
+    }
+
+    const conversationHistoryFromFrontend = requestBody.history;
+    const personaInstruction = requestBody.persona; // Get the persona from the request
+
+    if (!conversationHistoryFromFrontend || !Array.isArray(conversationHistoryFromFrontend)) {
+        // Allow empty history if persona is present, as persona will prime it
+        if (!personaInstruction || personaInstruction.trim() === "") {
+             console.error("Missing or invalid 'history' array in request body and no persona provided:", requestBody);
+             return {
+                statusCode: 400,
+                body: JSON.stringify({ error: "Request must include a 'history' array or a 'persona' string." })
+            };
+        }
+    }
+    
+    // --- Construct contents for Gemini API ---
+    let contentsForGemini = [];
+
+    // 1. Add Persona Instruction if provided
+    if (personaInstruction && personaInstruction.trim() !== "") {
+        // This is a common way to give system-level instructions to Gemini for chat
+        contentsForGemini.push({ 
+            role: "user", 
+            parts: [{ text: `IMPORTANT SYSTEM INSTRUCTION: Please adopt the following persona and adhere to these instructions for the entire duration of this conversation. Persona & Instructions: "${personaInstruction}" Now, I will begin the roleplay.` }] 
+        });
+        // Add a priming model response to ensure the conversation starts correctly after system prompt
+        contentsForGemini.push({
+            role: "model",
+            parts: [{ text: "Understood. I have received my persona and instructions. I am ready."}]
+        });
+    }
+
+    // 2. Append the actual chat history from the frontend
+    // Ensure conversationHistoryFromFrontend is not null before concating
+    if (conversationHistoryFromFrontend && conversationHistoryFromFrontend.length > 0) {
+        contentsForGemini = contentsForGemini.concat(conversationHistoryFromFrontend);
+    }
+
+
+    const geminiModelName = "gemini-1.5-flash-latest"; // Or "gemini-2.0-flash" if you prefer
+    const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModelName}:generateContent?key=${apiKey}`;
+
+    const geminiPayload = {
+        contents: contentsForGemini, 
+        generationConfig: { 
+            temperature: 0.7,
+            maxOutputTokens: 500 
+        }
+    };
+    
+    console.log("Payload to Gemini API:", JSON.stringify(geminiPayload, null, 2));
+
+
+    try {
+        const llmResponse = await fetch(geminiApiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(geminiPayload)
+        });
+
+        const responseBodyText = await llmResponse.text(); 
+
+        if (!llmResponse.ok) {
+            console.error(`Gemini API Error (Status: ${llmResponse.status}):`, responseBodyText);
+            return {
+                statusCode: llmResponse.status,
+                body: JSON.stringify({ error: `Gemini API request failed. Details: ${responseBodyText}` })
+            };
+        }
+
+        const llmResult = JSON.parse(responseBodyText); 
+
+        let aiMessageText = "Sorry, I couldn't get a valid response from the AI."; 
+        if (llmResult.candidates && llmResult.candidates.length > 0 &&
+            llmResult.candidates[0].content && llmResult.candidates[0].content.parts &&
+            llmResult.candidates[0].content.parts.length > 0 &&
+            typeof llmResult.candidates[0].content.parts[0].text === 'string') {
+            aiMessageText = llmResult.candidates[0].content.parts[0].text;
+        } else {
+            console.error("Unexpected Gemini API response structure:", JSON.stringify(llmResult, null, 2));
+        }
+        
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ aiMessage: aiMessageText })
+        };
+
+    } catch (error) {
+        console.error("Error executing the serverless function:", error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: `Function execution error: ${error.message}` })
+        };
+    }
+};
