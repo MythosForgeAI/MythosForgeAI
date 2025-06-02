@@ -2,17 +2,15 @@
 
 exports.handler = async function(event, context) {
     // --- Step 1: Get your secret API Key from Netlify's settings ---
-    // You will set this in the Netlify UI:
-    // Site configuration > Build & deploy > Environment > Environment variables
-    // Key: GEMINI_API_KEY
-    // Value: Your actual Gemini API Key
+    // This line MUST correctly access the environment variable you set in Netlify.
+    // The KEY for the variable in Netlify settings should be 'GEMINI_API_KEY'.
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-        console.error("GEMINI_API_KEY is not set in Netlify environment variables.");
+        console.error("CRITICAL ERROR: GEMINI_API_KEY is not set or accessible in Netlify environment variables.");
         return {
             statusCode: 500, // Internal Server Error
-            body: JSON.stringify({ error: "Server configuration error: API key missing." })
+            body: JSON.stringify({ error: "Server configuration error: API key is missing or not configured correctly." })
         };
     }
 
@@ -29,7 +27,7 @@ exports.handler = async function(event, context) {
     try {
         requestBody = JSON.parse(event.body);
     } catch (error) {
-        console.error("Invalid JSON in request body:", event.body);
+        console.error("Invalid JSON in request body:", event.body, error);
         return {
             statusCode: 400, // Bad Request
             body: JSON.stringify({ error: "Invalid JSON provided in the request." })
@@ -37,9 +35,8 @@ exports.handler = async function(event, context) {
     }
 
     const conversationHistoryFromFrontend = requestBody.history;
-    const personaInstruction = requestBody.persona; // Get the persona from the request
+    const personaInstruction = requestBody.persona;
 
-    // Validate that we have at least some history or a persona
     if ((!conversationHistoryFromFrontend || !Array.isArray(conversationHistoryFromFrontend)) && 
         (!personaInstruction || personaInstruction.trim() === "")) {
         console.error("Request must include a 'history' array and/or a 'persona' string:", requestBody);
@@ -52,8 +49,6 @@ exports.handler = async function(event, context) {
     // --- Step 4: Construct the 'contents' payload for the Gemini API ---
     let contentsForGemini = [];
 
-    // Add Persona Instruction as the first "user" turn, followed by a "model" acknowledgment
-    // This helps set the stage for the AI before the actual conversation history begins.
     if (personaInstruction && personaInstruction.trim() !== "") {
         contentsForGemini.push({ 
             role: "user", 
@@ -65,29 +60,30 @@ exports.handler = async function(event, context) {
         });
     }
 
-    // Append the actual chat history from the frontend
-    // Ensure conversationHistoryFromFrontend is not null/undefined before trying to concat
     if (conversationHistoryFromFrontend && Array.isArray(conversationHistoryFromFrontend)) {
         contentsForGemini = contentsForGemini.concat(conversationHistoryFromFrontend);
     }
 
-
     // --- Step 5: Prepare the request to the Gemini API ---
-    const geminiModelName = "models/gemini-2.5-flash-preview-05-20"; // You can change this if needed
-    const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/${geminiModelName}:generateContent?key=${apiKey}`;
+    // Ensure this model name is exactly what you intend to use and have access to.
+    const geminiModelName = "gemini-1.5-flash-latest"; // Or "models/gemini-2.5-flash-preview-05-20" if you are sure (without the leading 'models/' here)
+                                                     // If using "models/gemini-2.5-flash-preview-05-20", the variable should be:
+                                                     // const geminiModelNameForURL = "models/gemini-2.5-flash-preview-05-20";
+                                                     // And the URL: `https://generativelanguage.googleapis.com/v1beta/${geminiModelNameForURL}:generateContent?key=${apiKey}`;
+                                                     // Let's stick to gemini-1.5-flash-latest for now for simplicity unless you specify.
+
+    const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModelName}:generateContent?key=${apiKey}`;
 
     const geminiPayload = {
         contents: contentsForGemini, 
         generationConfig: { 
-            temperature: 0.7,       // Controls randomness (0.0 to 1.0)
-            maxOutputTokens: 500,  // Max length of the AI's response
-            // topP: 0.9,          // Alternative to temperature for sampling
-            // topK: 40            // Alternative to temperature for sampling
+            temperature: 0.7,
+            maxOutputTokens: 500 
         }
     };
     
-    console.log("Payload being sent to Gemini API:", JSON.stringify(geminiPayload, null, 2));
-
+    console.log("Attempting to call Gemini API with URL:", geminiApiUrl); // For debugging
+    console.log("Payload being sent to Gemini API:", JSON.stringify(geminiPayload, null, 2)); // For debugging
 
     // --- Step 6: Call the Gemini API ---
     try {
@@ -99,7 +95,7 @@ exports.handler = async function(event, context) {
             body: JSON.stringify(geminiPayload)
         });
 
-        const responseBodyText = await llmResponse.text(); // Read the raw response body
+        const responseBodyText = await llmResponse.text(); 
 
         if (!llmResponse.ok) {
             console.error(`Gemini API Error (Status: ${llmResponse.status}):`, responseBodyText);
@@ -109,10 +105,10 @@ exports.handler = async function(event, context) {
             };
         }
 
-        const llmResult = JSON.parse(responseBodyText); // Parse the JSON from the text
+        const llmResult = JSON.parse(responseBodyText); 
 
         // --- Step 7: Extract the AI's message from Gemini's response ---
-        let aiMessageText = "Sorry, I couldn't understand the AI's response format."; 
+        let aiMessageText = "Error: Could not parse AI's response."; 
         if (llmResult.candidates && llmResult.candidates.length > 0 &&
             llmResult.candidates[0].content && llmResult.candidates[0].content.parts &&
             llmResult.candidates[0].content.parts.length > 0 &&
@@ -125,22 +121,30 @@ exports.handler = async function(event, context) {
         // --- Step 8: Send the AI's message back to your webpage ---
         return {
             statusCode: 200, // OK
-            body: JSON.stringify({ aiMessage: aiMessageText }) // Format: { "aiMessage": "..." }
+            body: JSON.stringify({ aiMessage: aiMessageText })
         };
 
     } catch (error) {
-        console.error("Error executing the serverless function (e.g., fetch failed):", error);
+        console.error("Error executing the serverless function (e.g., fetch to Gemini failed or other JS error):", error.toString(), error.stack);
         return {
             statusCode: 500, // Internal Server Error
-            body: JSON.stringify({ error: `Function execution error: ${error.message}` }) // Format: { "error": "..." }
+            body: JSON.stringify({ error: `Function execution error: ${error.message}` })
         };
     }
 };
 ```
 
-**Reminder for this code:**
-* Make sure your environment variable in Netlify is named `GEMINI_API_KEY` and contains your valid API key.
-* This code is set up to call the `gemini-1.5-flash-latest` model. You can change `geminiModelName` if you want to test a different Gemini model (like `gemini-2.0-flash` if that's what you were looking at earlier, but ensure it's available via the API and your key has access).
-* The persona instruction is added as an initial "user" message, followed by a "model" acknowledgment. This is a common way to set context for Gemini chat models.
+**Please perform these exact steps:**
+1.  Go to your GitHub repository.
+2.  Navigate to the file `netlify/functions/llm-proxy.js`.
+3.  Click to edit it.
+4.  **Delete all the existing content in that file.**
+5.  **Copy the entire code block above and paste it into your `llm-proxy.js` file.**
+6.  Commit the changes with a message like "Replace proxy code with known good version."
+7.  Push the changes to GitHub.
+8.  Wait for Netlify to complete the new deployment.
+9.  Then, try testing your chat application again and check your Netlify function logs.
 
-After you update this file in your GitHub repository, Netlify should automatically redeploy the function. Then you can test from your `https://mythosforgeai.netlify.app/` page. Remember to check your Netlify function logs and browser console for any errors if things don't work as expect
+If there was a stray character or a typo causing that `SyntaxError`, this process of replacing the entire file content with a clean version should resolve it. The error you showed means the problem is right at the beginning when the code is first read, not when it's trying to do complex logic.
+
+I am here to help, and I will try my best to make the steps as clear as possib
