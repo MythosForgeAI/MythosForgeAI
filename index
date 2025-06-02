@@ -1,1 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MythosForgeAI - Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for chat (optional) */
+        #chat-output::-webkit-scrollbar {
+            width: 8px;
+        }
+        #chat-output::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #chat-output::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #chat-output::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .chat-bubble {
+            max-width: 75%;
+            padding: 10px 15px;
+            border-radius: 20px;
+            margin-bottom: 10px;
+            word-wrap: break-word;
+        }
+        .user-bubble {
+            background-color: #DCF8C6; /* Light green */
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+        }
+        .ai-bubble {
+            background-color: #E5E7EB; /* Light gray */
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+        }
+        .message-container {
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen font-sans p-4">
+
+    <div class="w-full max-w-2xl bg-white shadow-xl rounded-lg flex flex-col h-[80vh]">
+        <header class="bg-indigo-600 text-white p-4 rounded-t-lg">
+            <h1 class="text-2xl font-semibold text-center">MythosForgeAI - Chat Prototype</h1>
+        </header>
+
+        <div id="chat-output" class="flex-1 p-6 space-y-4 overflow-y-auto message-container">
+            <div class="chat-bubble ai-bubble">
+                Hello Kyle! I'm your MythosForgeAI prototype. Send me a message!
+            </div>
+        </div>
+
+        <div class="bg-gray-50 p-4 border-t border-gray-200 rounded-b-lg">
+            <div class="flex items-center space-x-3">
+                <input type="text" id="message-input" class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" placeholder="Type your message...">
+                <button id="send-button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-150 ease-in-out">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatOutput = document.getElementById('chat-output');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+
+        // Stores the conversation history for context (very basic for now)
+        let conversationHistory = [
+            { role: "model", parts: [{ text: "Hello Kyle! I'm your MythosForgeAI prototype. Send me a message!" }] }
+        ];
+
+        /**
+         * Displays a message in the chat output area.
+         * @param {string} message - The message text.
+         * @param {string} sender - "User" or "AI".
+         */
+        function displayMessage(message, sender) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('chat-bubble');
+            if (sender === 'User') {
+                messageElement.classList.add('user-bubble');
+                messageElement.textContent = `You: ${message}`;
+            } else {
+                messageElement.classList.add('ai-bubble');
+                messageElement.textContent = `AI: ${message}`;
+            }
+            chatOutput.appendChild(messageElement);
+            chatOutput.scrollTop = chatOutput.scrollHeight; // Auto-scroll to bottom
+        }
+
+        /**
+         * Simulates getting a response from an AI.
+         * Replace this with your actual API call via a secure backend proxy.
+         * @param {string} userMessage - The user's message.
+         */
+        async function getAIResponse(userMessage) {
+            // Add user message to internal history for context
+            conversationHistory.push({ role: "user", parts: [{ text: userMessage }] });
+
+            // --- START: LLM API Call Placeholder ---
+            // This is where you'll integrate the actual API call TO YOUR SECURE BACKEND PROXY.
+            // Your backend proxy will then call the chosen LLM provider.
+
+            // const yourBackendProxyUrl = "YOUR_NETLIFY_OR_VERCEL_FUNCTION_URL_HERE"; 
+            // const apiKeyForYourProxy = "IF_YOUR_PROXY_NEEDS_A_KEY_FROM_FRONTEND"; // Optional, some prefer securing the proxy itself differently
+
+            console.log("Sending to AI (mock):", userMessage);
+            console.log("Current conversation history for context:", JSON.stringify(conversationHistory, null, 2));
+
+
+            // **MOCK AI RESPONSE (REMOVE THIS SECTION WHEN IMPLEMENTING REAL API CALL TO YOUR PROXY)**
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
+            let aiResponseText = `You said: "${userMessage}". This is a placeholder response.`;
+            if (userMessage.toLowerCase().includes("hello") || userMessage.toLowerCase().includes("hi")) {
+                aiResponseText = "Hello there! How can I help you forge a tale today?";
+            } else if (userMessage.toLowerCase().includes("story")) {
+                aiResponseText = "Ah, a story! Once upon a time, in a land far, far away...";
+            }
+            // **END MOCK AI RESPONSE**
+
+
+            /*
+            // --- UNCOMMENT AND MODIFY THIS SECTION FOR A REAL API CALL TO YOUR BACKEND PROXY ---
+            // --- Your backend proxy will then make the actual call to the LLM API provider ---
+            try {
+                const payload = {
+                    history: conversationHistory, // Send the history, or just the latest message + history
+                    message: userMessage 
+                    // You might structure your payload differently depending on your proxy's needs
+                };
+
+                const response = await fetch(yourBackendProxyUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // Add any authorization header if your proxy requires it (e.g., 'X-Api-Key': apiKeyForYourProxy)
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorBody = await response.text();
+                    throw new Error(`API request to your proxy failed with status ${response.status}: ${errorBody}`);
+                }
+
+                const result = await response.json(); // Assuming your proxy returns JSON with the AI's message
+                
+                aiResponseText = result.aiMessage; // Adjust based on your proxy's response structure
+
+            } catch (error) {
+                console.error("Error calling your backend proxy:", error);
+                aiResponseText = "Sorry, I encountered an error trying to respond.";
+            }
+            // --- END: LLM API Call Placeholder ---
+            */
+            
+            // Add AI response to internal history
+            if (aiResponseText) { // Ensure we have a response before pushing
+                conversationHistory.push({ role: "model", parts: [{ text: aiResponseText }] });
+            }
+            
+            // Limit history size to prevent overly large payloads (very basic trimming)
+            const maxHistoryLength = 20; // Keep last 20 items (user + AI turns)
+            if (conversationHistory.length > maxHistoryLength) {
+                // This basic slice keeps the newest items. For a real app, you'd want more sophisticated context management.
+                conversationHistory = conversationHistory.slice(conversationHistory.length - maxHistoryLength);
+            }
+
+            if (aiResponseText) {
+                 displayMessage(aiResponseText, 'AI');
+            }
+        }
+
+        /**
+         * Handles sending the user's message.
+         */
+        function handleSendMessage() {
+            const message = messageInput.value.trim();
+            if (message) {
+                displayMessage(message, 'User');
+                messageInput.value = ''; // Clear input field
+                getAIResponse(message);
+            }
+        }
+
+        sendButton.addEventListener('click', handleSendMessage);
+        messageInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                handleSendMessage();
+            }
+        });
+
+    </script>
+</body>
+</html>
 
