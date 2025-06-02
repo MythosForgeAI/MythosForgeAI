@@ -53,7 +53,7 @@
 
         <div id="chat-output" class="flex-1 p-6 space-y-4 overflow-y-auto message-container">
             <div class="chat-bubble ai-bubble">
-                Hello Kyle! I'm your MythosForgeAI prototype. Send me a message!
+                Hello Kyle! I'm your MythosForgeAI prototype. Send me a message to test the Netlify proxy!
             </div>
         </div>
 
@@ -72,9 +72,15 @@
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
 
-        // Stores the conversation history for context (very basic for now)
+        // Stores the conversation history for context
         let conversationHistory = [
-            { role: "model", parts: [{ text: "Hello Kyle! I'm your MythosForgeAI prototype. Send me a message!" }] }
+            // Initialize with a system message or AI's first message if needed by your LLM/proxy
+            // For Gemini, the history usually starts with a user message or a model response.
+            // If your proxy adds a system prompt, you might not need one here.
+            // Example: { role: "system", content: "You are a helpful AI."} // OpenAI style
+            // Example: { role: "user", parts: [{text: "Initial context for model (invisible to user)"}]}, 
+            //          { role: "model", parts: [{text: "Okay, I'm ready."}]} // Gemini style
+            { role: "model", parts: [{ text: "Hello Kyle! I'm your MythosForgeAI prototype. Send me a message to test the Netlify proxy!" }] }
         ];
 
         /**
@@ -97,80 +103,70 @@
         }
 
         /**
-         * Simulates getting a response from an AI.
-         * Replace this with your actual API call via a secure backend proxy.
+         * Gets a response from the AI via your Netlify backend proxy.
          * @param {string} userMessage - The user's message.
          */
         async function getAIResponse(userMessage) {
-            // Add user message to internal history for context
+            // Add user message to internal history for context before sending
             conversationHistory.push({ role: "user", parts: [{ text: userMessage }] });
 
-            // --- START: LLM API Call Placeholder ---
-            // This is where you'll integrate the actual API call TO YOUR SECURE BACKEND PROXY.
-            // Your backend proxy will then call the chosen LLM provider.
+            const yourBackendProxyUrl = "https://mythosforgeai.com/.netlify/functions/llm-proxy"; 
 
-            // const yourBackendProxyUrl = "YOUR_NETLIFY_OR_VERCEL_FUNCTION_URL_HERE"; 
-            // const apiKeyForYourProxy = "IF_YOUR_PROXY_NEEDS_A_KEY_FROM_FRONTEND"; // Optional, some prefer securing the proxy itself differently
+            console.log("Sending to Netlify proxy:", userMessage);
+            console.log("Sending conversation history:", JSON.stringify(conversationHistory, null, 2));
 
-            console.log("Sending to AI (mock):", userMessage);
-            console.log("Current conversation history for context:", JSON.stringify(conversationHistory, null, 2));
+            let aiResponseText = "Error connecting to AI. Please try again."; // Default error
 
-
-            // **MOCK AI RESPONSE (REMOVE THIS SECTION WHEN IMPLEMENTING REAL API CALL TO YOUR PROXY)**
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
-            let aiResponseText = `You said: "${userMessage}". This is a placeholder response.`;
-            if (userMessage.toLowerCase().includes("hello") || userMessage.toLowerCase().includes("hi")) {
-                aiResponseText = "Hello there! How can I help you forge a tale today?";
-            } else if (userMessage.toLowerCase().includes("story")) {
-                aiResponseText = "Ah, a story! Once upon a time, in a land far, far away...";
-            }
-            // **END MOCK AI RESPONSE**
-
-
-            /*
-            // --- UNCOMMENT AND MODIFY THIS SECTION FOR A REAL API CALL TO YOUR BACKEND PROXY ---
-            // --- Your backend proxy will then make the actual call to the LLM API provider ---
             try {
+                // The payload structure should match what your Netlify function (llm-proxy.js) expects
                 const payload = {
-                    history: conversationHistory, // Send the history, or just the latest message + history
-                    message: userMessage 
-                    // You might structure your payload differently depending on your proxy's needs
+                    history: conversationHistory, 
+                    // message: userMessage // Your llm-proxy.js expects 'history' and 'message'
+                                         // However, the userMessage is already the last item in 'history'
+                                         // Let's ensure the proxy handles this structure.
+                                         // Sending just the history which now includes the latest user message.
+                                         // The proxy can then take `history` and pass it as `contents` to Gemini.
                 };
 
                 const response = await fetch(yourBackendProxyUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        // Add any authorization header if your proxy requires it (e.g., 'X-Api-Key': apiKeyForYourProxy)
                     },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(payload) // Send the payload your proxy expects
                 });
 
                 if (!response.ok) {
-                    const errorBody = await response.text();
-                    throw new Error(`API request to your proxy failed with status ${response.status}: ${errorBody}`);
+                    const errorBody = await response.text(); // Get more details from error
+                    console.error(`Proxy Error: ${response.status}`, errorBody);
+                    aiResponseText = `Error from AI service: ${response.status}. Check console for details.`;
+                    // Display the error message or a user-friendly version
+                } else {
+                    const result = await response.json(); // Assuming your proxy returns JSON: { "aiMessage": "..." }
+                    if (result.aiMessage) {
+                        aiResponseText = result.aiMessage;
+                    } else if (result.error) { // Handle errors returned by your proxy
+                        console.error("Error from proxy function:", result.error);
+                        aiResponseText = `Proxy function error: ${result.error}`;
+                    } else {
+                        console.error("Unexpected response structure from proxy:", result);
+                        aiResponseText = "Received an unexpected response from the AI service.";
+                    }
                 }
 
-                const result = await response.json(); // Assuming your proxy returns JSON with the AI's message
-                
-                aiResponseText = result.aiMessage; // Adjust based on your proxy's response structure
-
             } catch (error) {
-                console.error("Error calling your backend proxy:", error);
-                aiResponseText = "Sorry, I encountered an error trying to respond.";
+                console.error("Fetch error calling your backend proxy:", error);
+                aiResponseText = "Network error or proxy is unreachable. Please try again.";
             }
-            // --- END: LLM API Call Placeholder ---
-            */
             
             // Add AI response to internal history
-            if (aiResponseText) { // Ensure we have a response before pushing
+            if (aiResponseText) {
                 conversationHistory.push({ role: "model", parts: [{ text: aiResponseText }] });
             }
             
-            // Limit history size to prevent overly large payloads (very basic trimming)
-            const maxHistoryLength = 20; // Keep last 20 items (user + AI turns)
+            // Limit history size (basic trimming)
+            const maxHistoryLength = 20; // e.g., keep last 10 turns (user + AI)
             if (conversationHistory.length > maxHistoryLength) {
-                // This basic slice keeps the newest items. For a real app, you'd want more sophisticated context management.
                 conversationHistory = conversationHistory.slice(conversationHistory.length - maxHistoryLength);
             }
 
@@ -185,9 +181,9 @@
         function handleSendMessage() {
             const message = messageInput.value.trim();
             if (message) {
-                displayMessage(message, 'User');
+                displayMessage(message, 'User'); // Display user message immediately
                 messageInput.value = ''; // Clear input field
-                getAIResponse(message);
+                getAIResponse(message); // Then get AI response
             }
         }
 
@@ -201,4 +197,20 @@
     </script>
 </body>
 </html>
+```
 
+**Key changes in this version's JavaScript:**
+
+1.  **`yourBackendProxyUrl`:** This is now set to `https://mythosforgeai.com/.netlify/functions/llm-proxy`.
+2.  **Real `fetch` Call:** The mock AI response section is removed, and the `fetch` call to your Netlify function is active.
+3.  **Payload to Proxy:** The `payload` sent to your Netlify function now sends the `conversationHistory`. Your `llm-proxy.js` function should be expecting a body like `{ "history": [...] }` and then it will use that `history` as the `contents` for the Gemini API call.
+4.  **Error Handling:** Basic error handling for the `fetch` call and if the response from the proxy isn't `ok` or doesn't have the expected `aiMessage` property.
+
+**Before you deploy this updated HTML to GitHub:**
+
+* **Ensure your `llm-proxy.js` on Netlify is correctly set up to:**
+    * Expect a JSON body with a `history` property (which is an array of message objects).
+    * Use this `history` array as the `contents` field when calling the Gemini API.
+    * Return a JSON response in the format `{ "aiMessage": "the AI's actual response here" }` or `{ "error": "some error message" }`.
+
+Once you push this updated HTML to GitHub, Netlify should redeploy your site, and it will start using your Netlify function to communicate with the LLM API! Good luck with the testi
