@@ -101,7 +101,7 @@
             async function getAIResponse(userMessageText) {
                 conversationHistoryForAPI.push({ role: "user", parts: [{ text: userMessageText }] });
 
-                const yourNetlifyProxyUrl = "https://mythosforgeai.com/.netlify/functions/llm-proxy"; 
+                const yourNetlifyProxyUrl = "/.netlify/functions/llm-proxy"; 
 
                 console.log("Attempting to send to Netlify proxy:", yourNetlifyProxyUrl);
                 console.log("Sending conversation history to proxy:", JSON.stringify(conversationHistoryForAPI, null, 2));
