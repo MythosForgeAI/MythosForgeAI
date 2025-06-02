@@ -1,144 +1,167 @@
-<script>
-        const chatOutput = document.getElementById('chat-output');
-        const messageInput = document.getElementById('message-input');
-        const sendButton = document.getElementById('send-button');
-
-        // Initialize conversation history. 
-        // The first "model" message is just for display on the page load.
-        // The actual history sent to the AI will build up from user interactions.
-        let conversationHistory = [
-            { 
-                role: "model", // This is for Gemini's format
-                parts: [{ text: "Hello Kyle! I'm your MythosForgeAI prototype. Send a message to test the live API!" }] 
-            }
-        ];
-
-        // Display the initial AI message (if you want it to appear from the start)
-        // If you remove the initial message above from conversationHistory, also remove this call.
-        // displayMessage(conversationHistory[0].parts[0].text, 'AI'); 
-
-        /**
-         * Displays a message in the chat output area.
-         * @param {string} message - The message text.
-         * @param {string} sender - "User" or "AI".
-         */
-        function displayMessage(message, sender) {
-            const messageElement = document.createElement('div');
-            messageElement.classList.add('chat-bubble');
-            if (sender === 'User') {
-                messageElement.classList.add('user-bubble');
-                messageElement.textContent = `You: ${message}`;
-            } else {
-                messageElement.classList.add('ai-bubble');
-                messageElement.textContent = `AI: ${message}`;
-            }
-            chatOutput.appendChild(messageElement);
-            chatOutput.scrollTop = chatOutput.scrollHeight; // Auto-scroll to bottom
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MythosForgeAI - Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for chat (optional) */
+        #chat-output::-webkit-scrollbar {
+            width: 8px;
         }
+        #chat-output::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #chat-output::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #chat-output::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .chat-bubble {
+            max-width: 75%;
+            padding: 10px 15px;
+            border-radius: 20px;
+            margin-bottom: 10px;
+            word-wrap: break-word;
+        }
+        .user-bubble {
+            background-color: #DCF8C6; /* Light green */
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+        }
+        .ai-bubble {
+            background-color: #E5E7EB; /* Light gray */
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+        }
+        .message-container {
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen font-sans p-4">
 
-        /**
-         * Gets a response from the AI via your Netlify backend proxy.
-         * @param {string} userMessageText - The user's message text.
-         */
-        async function getAIResponse(userMessageText) {
-            // Add the current user's message to the conversation history
-            // This ensures the history sent to the proxy includes the latest message
-            conversationHistory.push({ role: "user", parts: [{ text: userMessageText }] });
+    <div class="w-full max-w-2xl bg-white shadow-xl rounded-lg flex flex-col h-[80vh]">
+        <header class="bg-indigo-600 text-white p-4 rounded-t-lg">
+            <h1 class="text-2xl font-semibold text-center">MythosForgeAI - Chat Prototype (GitHub Pages Test)</h1>
+        </header>
 
-            // This is the URL of YOUR Netlify function that you deployed
-            const yourNetlifyProxyUrl = "https://mythosforgeai.com/.netlify/functions/llm-proxy"; 
+        <div id="chat-output" class="flex-1 p-6 space-y-4 overflow-y-auto message-container">
+            <div class="chat-bubble ai-bubble">
+                Hello Kyle! This is the GitHub Pages test version. Send a message!
+            </div>
+        </div>
 
-            console.log("Attempting to send to Netlify proxy:", yourNetlifyProxyUrl);
-            console.log("Sending conversation history:", JSON.stringify(conversationHistory, null, 2));
+        <div class="bg-gray-50 p-4 border-t border-gray-200 rounded-b-lg">
+            <div class="flex items-center space-x-3">
+                <input type="text" id="message-input" class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" placeholder="Type your message...">
+                <button id="send-button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-150 ease-in-out">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
 
-            let aiResponseText = "Error: Could not reach the AI service. Please check console."; // Default error
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatOutput = document.getElementById('chat-output');
+            const messageInput = document.getElementById('message-input');
+            const sendButton = document.getElementById('send-button');
 
-            try {
-                // This is the data we send TO YOUR NETLIFY FUNCTION
-                // Your Netlify function expects an object with a "history" key
-                const payloadToProxy = {
-                    history: conversationHistory
-                };
+            // Check if elements were found (good for debugging)
+            if (!chatOutput) console.error("Chat output element not found!");
+            if (!messageInput) console.error("Message input element not found!");
+            if (!sendButton) console.error("Send button element not found!");
 
-                const response = await fetch(yourNetlifyProxyUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(payloadToProxy)
-                });
+            // Stores the conversation history for display (very basic for now)
+            let conversationHistoryForDisplay = [ 
+                 { sender: "AI", text: "Hello Kyle! This is the GitHub Pages test version. Send a message!" }
+            ];
 
-                if (!response.ok) {
-                    // If the response status is not OK (e.g., 4xx, 5xx)
-                    const errorData = await response.json(); // Try to parse error from proxy
-                    console.error(`Error from proxy (Status ${response.status}):`, errorData);
-                    aiResponseText = `Error: ${errorData.error || `Request to AI service failed (${response.status})`}`;
-                } else {
-                    // If the response is OK, parse the JSON
-                    const result = await response.json(); 
-                    if (result.aiMessage) {
-                        aiResponseText = result.aiMessage;
-                    } else if (result.error) {
-                        console.error("Error message from proxy function:", result.error);
-                        aiResponseText = `Error from AI service: ${result.error}`;
-                    } else {
-                        // If the proxy returns success (200) but not the expected JSON format
-                        console.error("Unexpected response structure from proxy:", result);
-                        aiResponseText = "Received an unexpected response from the AI service.";
-                    }
+            /**
+             * Displays a message in the chat output area.
+             * @param {string} messageText - The message text.
+             * @param {string} sender - "User" or "AI".
+             */
+            function displayMessage(messageText, sender) {
+                if (!chatOutput) {
+                    console.error("displayMessage called but chatOutput element is not available.");
+                    return; 
                 }
 
-            } catch (error) {
-                // This catches network errors (e.g., proxy URL is wrong, Netlify function not found, CORS if misconfigured)
-                console.error("Network or fetch error calling your backend proxy:", error);
-                aiResponseText = "Network error or proxy is unreachable. Please check console and Netlify function logs.";
-            }
-            
-            // Add the AI's response to our conversation history for the next turn
-            if (aiResponseText) { // Ensure we have some response text
-                conversationHistory.push({ role: "model", parts: [{ text: aiResponseText }] });
-            }
-            
-            // Limit history size (basic trimming to prevent overly large payloads)
-            const maxHistoryTurns = 10; // Keep last 10 turns (1 turn = 1 user message + 1 AI message)
-            const maxHistoryItems = maxHistoryTurns * 2; 
-            if (conversationHistory.length > maxHistoryItems) {
-                // Slice from the end to keep the most recent items
-                conversationHistory = conversationHistory.slice(conversationHistory.length - maxHistoryItems);
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('chat-bubble');
+                if (sender === 'User') {
+                    messageElement.classList.add('user-bubble');
+                    messageElement.textContent = `You: ${messageText}`;
+                } else {
+                    messageElement.classList.add('ai-bubble');
+                    messageElement.textContent = `AI: ${messageText}`;
+                }
+                chatOutput.appendChild(messageElement);
+                chatOutput.scrollTop = chatOutput.scrollHeight; // Auto-scroll to bottom
             }
 
-            // Display the AI's final response (or error message)
-            if (aiResponseText) {
-                 displayMessage(aiResponseText, 'AI');
-            }
-        }
+            /**
+             * MOCK AI Response for GitHub Pages testing.
+             * @param {string} userMessage - The user's message.
+             */
+            async function getMockAIResponse(userMessage) {
+                console.log("User message for mock AI:", userMessage);
+                
+                conversationHistoryForDisplay.push({ sender: "User", text: userMessage });
 
-        /**
-         * Handles sending the user's message.
-         */
-        function handleSendMessage() {
-            const messageText = messageInput.value.trim();
-            if (messageText) {
-                displayMessage(messageText, 'User'); // Display user message immediately
-                messageInput.value = ''; // Clear input field
-                getAIResponse(messageText); // Then get AI response
-            }
-        }
+                await new Promise(resolve => setTimeout(resolve, 700)); 
 
-        sendButton.addEventListener('click', handleSendMessage);
-        messageInput.addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                handleSendMessage();
+                let aiResponseText = `Mock response to: "${userMessage}".`;
+                if (userMessage.toLowerCase().includes("hello") || userMessage.toLowerCase().includes("hi")) {
+                    aiResponseText = "Hello from the mock AI on GitHub Pages!";
+                } else if (userMessage.toLowerCase().includes("story")) {
+                    aiResponseText = "This mock AI can't tell long stories yet, but imagine one here!";
+                }
+                
+                conversationHistoryForDisplay.push({ sender: "AI", text: aiResponseText });
+                displayMessage(aiResponseText, 'AI');
+            }
+
+            /**
+             * Handles sending the user's message.
+             */
+            function handleSendMessage() {
+                if (!messageInput) {
+                    console.error("handleSendMessage called but messageInput element is not available.");
+                    return; 
+                }
+                const message = messageInput.value.trim();
+                if (message) {
+                    displayMessage(message, 'User'); 
+                    messageInput.value = ''; 
+                    getMockAIResponse(message); 
+                }
+            }
+
+            // Only add event listeners if the elements exist
+            if (sendButton) {
+                sendButton.addEventListener('click', handleSendMessage);
+            } else {
+                console.error("Send button not found, cannot add click listener.");
+            }
+
+            if (messageInput) {
+                messageInput.addEventListener('keypress', function(event) {
+                    if (event.key === 'Enter') {
+                        handleSendMessage();
+                    }
+                });
+            } else {
+                console.error("Message input not found, cannot add keypress listener.");
             }
         });
-
-        // Optional: If you don't want the initial AI message to be part of the history sent on the *first* user message,
-        // you can display it and then clear or re-initialize conversationHistory for the actual interaction.
-        // For now, the initial AI message is part of the history array.
-        // If you prefer to display the first AI message without it being in history, do this:
-        // displayMessage("Hello Kyle! I'm your MythosForgeAI prototype. Send a message to test the live API!", 'AI');
-        // conversationHistory = []; // Start with an empty history for API calls
-
     </script>
 </body>
 </html>
