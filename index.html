@@ -48,12 +48,12 @@
 
     <div class="w-full max-w-2xl bg-white shadow-xl rounded-lg flex flex-col h-[80vh]">
         <header class="bg-indigo-600 text-white p-4 rounded-t-lg">
-            <h1 class="text-2xl font-semibold text-center">MythosForgeAI - Chat Prototype (GitHub Pages Test)</h1>
+            <h1 class="text-2xl font-semibold text-center">MythosForgeAI - Chat Prototype (Live API Test)</h1>
         </header>
 
         <div id="chat-output" class="flex-1 p-6 space-y-4 overflow-y-auto message-container">
             <div class="chat-bubble ai-bubble">
-                Hello Kyle! This is the GitHub Pages test version. Send a message!
+                Hello Kyle! Ready to test the live API via Netlify. Send a message!
             </div>
         </div>
 
@@ -73,21 +73,12 @@
             const messageInput = document.getElementById('message-input');
             const sendButton = document.getElementById('send-button');
 
-            // Check if elements were found (good for debugging)
             if (!chatOutput) console.error("Chat output element not found!");
             if (!messageInput) console.error("Message input element not found!");
             if (!sendButton) console.error("Send button element not found!");
 
-            // Stores the conversation history for display (very basic for now)
-            let conversationHistoryForDisplay = [ 
-                 { sender: "AI", text: "Hello Kyle! This is the GitHub Pages test version. Send a message!" }
-            ];
+            let conversationHistoryForAPI = [];
 
-            /**
-             * Displays a message in the chat output area.
-             * @param {string} messageText - The message text.
-             * @param {string} sender - "User" or "AI".
-             */
             function displayMessage(messageText, sender) {
                 if (!chatOutput) {
                     console.error("displayMessage called but chatOutput element is not available.");
@@ -104,48 +95,81 @@
                     messageElement.textContent = `AI: ${messageText}`;
                 }
                 chatOutput.appendChild(messageElement);
-                chatOutput.scrollTop = chatOutput.scrollHeight; // Auto-scroll to bottom
+                chatOutput.scrollTop = chatOutput.scrollHeight; 
             }
 
-            /**
-             * MOCK AI Response for GitHub Pages testing.
-             * @param {string} userMessage - The user's message.
-             */
-            async function getMockAIResponse(userMessage) {
-                console.log("User message for mock AI:", userMessage);
-                
-                conversationHistoryForDisplay.push({ sender: "User", text: userMessage });
+            async function getAIResponse(userMessageText) {
+                conversationHistoryForAPI.push({ role: "user", parts: [{ text: userMessageText }] });
 
-                await new Promise(resolve => setTimeout(resolve, 700)); 
+                const yourNetlifyProxyUrl = "https://mythosforgeai.com/.netlify/functions/llm-proxy"; 
 
-                let aiResponseText = `Mock response to: "${userMessage}".`;
-                if (userMessage.toLowerCase().includes("hello") || userMessage.toLowerCase().includes("hi")) {
-                    aiResponseText = "Hello from the mock AI on GitHub Pages!";
-                } else if (userMessage.toLowerCase().includes("story")) {
-                    aiResponseText = "This mock AI can't tell long stories yet, but imagine one here!";
+                console.log("Attempting to send to Netlify proxy:", yourNetlifyProxyUrl);
+                console.log("Sending conversation history to proxy:", JSON.stringify(conversationHistoryForAPI, null, 2));
+
+                let aiResponseText = "Error: Could not reach the AI service. Please check console."; 
+
+                try {
+                    const payloadToProxy = {
+                        history: conversationHistoryForAPI 
+                    };
+
+                    const response = await fetch(yourNetlifyProxyUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(payloadToProxy)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => response.text()); 
+                        console.error(`Error from proxy (Status ${response.status}):`, errorData);
+                        aiResponseText = `Error: ${ (typeof errorData === 'string' ? errorData : errorData.error) || `Request to AI service failed (${response.status})`}`;
+                    } else {
+                        const result = await response.json(); 
+                        if (result.aiMessage) {
+                            aiResponseText = result.aiMessage;
+                        } else if (result.error) {
+                            console.error("Error message from proxy function:", result.error);
+                            aiResponseText = `Error from AI service: ${result.error}`;
+                        } else {
+                            console.error("Unexpected response structure from proxy:", result);
+                            aiResponseText = "Received an unexpected response from the AI service.";
+                        }
+                    }
+                } catch (error) {
+                    console.error("Network or fetch error calling your backend proxy:", error);
+                    aiResponseText = "Network error or proxy is unreachable. Please check console and Netlify function logs.";
                 }
                 
-                conversationHistoryForDisplay.push({ sender: "AI", text: aiResponseText });
-                displayMessage(aiResponseText, 'AI');
+                if (aiResponseText) { 
+                    conversationHistoryForAPI.push({ role: "model", parts: [{ text: aiResponseText }] });
+                }
+                
+                const maxHistoryTurns = 10; 
+                const maxHistoryItems = maxHistoryTurns * 2; 
+                if (conversationHistoryForAPI.length > maxHistoryItems) {
+                    conversationHistoryForAPI = conversationHistoryForAPI.slice(conversationHistoryForAPI.length - maxHistoryItems);
+                }
+
+                if (aiResponseText) {
+                     displayMessage(aiResponseText, 'AI');
+                }
             }
 
-            /**
-             * Handles sending the user's message.
-             */
             function handleSendMessage() {
                 if (!messageInput) {
                     console.error("handleSendMessage called but messageInput element is not available.");
                     return; 
                 }
-                const message = messageInput.value.trim();
-                if (message) {
-                    displayMessage(message, 'User'); 
+                const messageText = messageInput.value.trim();
+                if (messageText) {
+                    displayMessage(messageText, 'User'); 
                     messageInput.value = ''; 
-                    getMockAIResponse(message); 
+                    getAIResponse(messageText); 
                 }
             }
 
-            // Only add event listeners if the elements exist
             if (sendButton) {
                 sendButton.addEventListener('click', handleSendMessage);
             } else {
@@ -165,3 +189,8 @@
     </script>
 </body>
 </html>
+```
+
+The main change here is ensuring that any text that was meant as an instruction *to you* (like the text you saw appearing at the bottom of your test site) is fully removed if it wasn't inside HTML comment tags (``) or JavaScript comments (`// ...` or `/* ... */`).
+
+Please replace the content of your `index.html` with this cleaned-up version, commit, and push. Then check your GitHub Pages site again. Hopefully, those stray comments are go
