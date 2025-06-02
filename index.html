@@ -6,81 +6,56 @@
     <title>MythosForgeAI - Prototype</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Custom scrollbar for chat (optional) */
-        #chat-output::-webkit-scrollbar {
-            width: 8px;
+        body {
+            font-family: 'Inter', sans-serif;
         }
-        #chat-output::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 10px;
-        }
-        #chat-output::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 10px;
-        }
-        #chat-output::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-        .chat-bubble {
-            max-width: 75%;
-            padding: 10px 15px;
-            border-radius: 20px;
-            margin-bottom: 10px;
-            word-wrap: break-word;
-        }
-        .user-bubble {
-            background-color: #DCF8C6; /* Light green */
-            align-self: flex-end;
-            border-bottom-right-radius: 5px;
-        }
-        .ai-bubble {
-            background-color: #E5E7EB; /* Light gray */
-            align-self: flex-start;
-            border-bottom-left-radius: 5px;
-        }
-        .message-container {
-            display: flex;
-            flex-direction: column;
-        }
-        .settings-input {
-            padding: 8px;
-            border: 1px solid #D1D5DB;
-            border-radius: 8px;
-            margin-bottom: 5px;
-            width: 100%;
-        }
+        #chat-output::-webkit-scrollbar { width: 8px; }
+        #chat-output::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        #chat-output::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        #chat-output::-webkit-scrollbar-thumb:hover { background: #555; }
+        .chat-bubble { max-width: 80%; padding: 10px 15px; border-radius: 18px; margin-bottom: 10px; word-wrap: break-word; line-height: 1.5; }
+        .user-bubble { background-color: #c8e6c9; align-self: flex-end; border-bottom-right-radius: 5px; }
+        .ai-bubble { background-color: #e0e0e0; align-self: flex-start; border-bottom-left-radius: 5px; }
+        .message-container { display: flex; flex-direction: column; }
+        .settings-input { padding: 10px; border: 1px solid #D1D5DB; border-radius: 8px; margin-bottom: 8px; width: 100%; box-sizing: border-box; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     </style>
 </head>
-<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen font-sans p-4">
+<body class="bg-gray-200 flex flex-col items-center justify-center min-h-screen p-2 md:p-4">
 
-    <div class="w-full max-w-2xl bg-white shadow-xl rounded-lg flex flex-col h-[95vh] md:h-[90vh]">
-        <header class="bg-indigo-600 text-white p-4 rounded-t-lg">
-            <h1 class="text-2xl font-semibold text-center">MythosForgeAI - Chat Prototype (Persona & History Test)</h1>
-        </header>
+    <div class="w-full max-w-4xl bg-white shadow-2xl rounded-xl flex flex-col h-[95vh] md:h-[90vh] mt-2 md:mt-0">
+        <header class="bg-indigo-700 text-white p-4 rounded-t-xl flex items-center justify-between">
+            <h1 class="text-xl md:text-2xl font-semibold">MythosForgeAI - Chat Prototype</h1>
+            <div></div> </header>
 
-        <div class="p-4 border-b border-gray-200 bg-gray-50">
-            <div>
-                <label for="persona-input" class="block text-sm font-medium text-gray-700">AI Persona Instructions:</label>
-                <textarea id="persona-input" rows="3" class="settings-input mt-1 focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g., You are a grumpy pirate captain named One-Eye Jack. You only care about treasure."></textarea>
-            </div>
-            <div class="mt-2">
-                <label for="max-history-input" class="block text-sm font-medium text-gray-700">Chat History Turns to Send (for testing, 1 turn = 1 user + 1 AI message):</label>
-                <input type="number" id="max-history-input" value="10" min="0" class="settings-input mt-1 focus:ring-indigo-500 focus:border-indigo-500">
-            </div>
-        </div>
+        <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
+            
+            <div class="w-full md:w-1/3 lg:w-1/4 p-3 md:p-4 border-b md:border-b-0 md:border-r border-gray-300 bg-gray-100 overflow-y-auto">
+                <div>
+                    <label for="persona-input" class="block text-xs md:text-sm font-medium text-gray-800 mb-1">AI Persona Instructions:</label>
+                    <textarea id="persona-input" rows="4" class="settings-input focus:ring-indigo-600 focus:border-indigo-600 text-sm" placeholder="e.g., You are a grumpy pirate captain named One-Eye Jack."></textarea>
+                </div>
+                <div class="mt-2">
+                    <label for="max-history-input" class="block text-xs md:text-sm font-medium text-gray-800 mb-1">Chat History Turns to Send (Test):</label>
+                    <input type="number" id="max-history-input" value="10" min="0" max="50" class="settings-input focus:ring-indigo-600 focus:border-indigo-600 text-sm w-24">
+                </div>
+                </div>
 
-        <div id="chat-output" class="flex-1 p-6 space-y-4 overflow-y-auto message-container">
-            <div class="chat-bubble ai-bubble">
-                Set my persona above and send a message!
-            </div>
-        </div>
+            <div class="flex-1 flex flex-col bg-white overflow-hidden">
+                <div id="chat-output" class="flex-1 p-4 md:p-6 space-y-3 overflow-y-auto message-container">
+                    <div class="chat-bubble ai-bubble">
+                        Set my persona and send a message!
+                    </div>
+                </div>
 
-        <div class="bg-gray-50 p-4 border-t border-gray-200 rounded-b-lg">
-            <div class="flex items-center space-x-3">
-                <input type="text" id="message-input" class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" placeholder="Type your message...">
-                <button id="send-button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-150 ease-in-out">
-                    Send
-                </button>
+                <div class="bg-gray-100 p-3 md:p-4 border-t border-gray-300">
+                    <div class="flex items-center space-x-2 md:space-x-3">
+                        <input type="text" id="message-input" class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none text-sm md:text-base" placeholder="Type your message...">
+                        <button id="send-button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 md:px-6 rounded-lg transition duration-150 ease-in-out text-sm md:text-base">
+                            Send
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -210,15 +185,3 @@
     </script>
 </body>
 </html>
-```
-
-**Changes Made:**
-
-* On the main `div` that wraps the entire UI (the one with `class="w-full max-w-2xl ..."`), I changed:
-    * `h-[90vh] md:h-[80vh]`
-    * to
-    * `h-[95vh] md:h-[90vh]`
-
-This increases the height of the entire chat widget by 5% of the viewport height on smaller screens and 10% of the viewport height on medium screens and up. The `flex-1` class on your `#chat-output` div will automatically make it use this extra available vertical space.
-
-After you update your `index.html` on GitHub with this code and Netlify redeploys, you should see a noticeably taller chat area. Let me know if that gives you the space you ne
