@@ -152,9 +152,10 @@
             }
 
             async function getAIResponse(userMessageTextForAPI, isContinuation = false) {
-                // If it's NOT a continuation (i.e., a new message or a simple resend of the last user message),
+                // If it's NOT a continuation (a brand new message from "Send"),
                 // add the user's message to the API history.
-                // For an AI reroll (isContinuation = true), the user message is already the last one in history.
+                // For an AI reroll OR a user resend after error (isContinuation = true), 
+                // the user message is assumed to already be the last relevant "user" entry in history.
                 if (!isContinuation) {
                     conversationHistoryForAPI.push({ role: "user", parts: [{ text: userMessageTextForAPI }] });
                 }
@@ -171,7 +172,7 @@
                 
                 console.log("Attempting to send to Netlify proxy:", yourNetlifyProxyUrl);
                 console.log("Sending persona:", personaValue);
-                console.log("Sending conversation history (trimmed for API call):", JSON.stringify(historyToSend, null, 2));
+                console.log("Sending conversation history for API call:", JSON.stringify(historyToSend, null, 2));
 
                 try {
                     const payloadToProxy = {
@@ -191,11 +192,9 @@
                         const errorMsg = result.error || `Request to AI service failed (${response.status}, ${response.statusText})`;
                         console.error(`Error from proxy (Status ${response.status}):`, result);
                         displayError(errorMsg); 
-                        // If the request failed, we might want to remove the user message we just optimistically added to history for a normal send.
-                        // For a resend or reroll, history was already set.
-                        if (!isContinuation && conversationHistoryForAPI.length > 0 && conversationHistoryForAPI[conversationHistoryForAPI.length - 1].parts[0].text === userMessageTextForAPI) {
-                            conversationHistoryForAPI.pop(); // Remove the user message that failed
-                        }
+                        // IMPORTANT: Do NOT pop from conversationHistoryForAPI here.
+                        // The history should reflect the user message that was attempted,
+                        // so a "Resend User" or "Reroll AI" can correctly use it.
                         return; 
                     }
                     
@@ -213,10 +212,6 @@
                 } catch (error) {
                     console.error("Network or fetch error calling your backend proxy:", error);
                     displayError(`Network error or proxy is unreachable: ${error.message}`); 
-                    // Also remove user message from history if it was a fresh send that failed at network level
-                    if (!isContinuation && conversationHistoryForAPI.length > 0 && conversationHistoryForAPI[conversationHistoryForAPI.length - 1].parts[0].text === userMessageTextForAPI) {
-                        conversationHistoryForAPI.pop();
-                    }
                 }
             }
 
@@ -233,75 +228,68 @@
             
             function handleResendMessage() {
                 if (lastUserMessageText) {
-                    console.log("Resending last user message to AI (no new UI entry):", lastUserMessageText);
-                    // We want to retry the call for lastUserMessageText.
-                    // The conversationHistoryForAPI should end with this lastUserMessageText if the previous AI call failed.
-                    // Or, if AI responded but user wants to resend their *own* last message to get a *new* AI response.
-                    // For simplicity, let's ensure conversationHistoryForAPI's last message IS the lastUserMessageText.
-                    if (conversationHistoryForAPI.length > 0 && 
-                        conversationHistoryForAPI[conversationHistoryForAPI.length - 1].role === 'model') {
-                        // This means the AI successfully responded last. If user hits resend,
-                        // they want to resend their previous message.
-                        // We don't re-display the user message.
-                        // The getAIResponse will add lastUserMessageText to history again as a new turn.
-                         getAIResponse(lastUserMessageText, false);
-                    } else if (conversationHistoryForAPI.length > 0 && 
-                               conversationHistoryForAPI[conversationHistoryForAPI.length -1].role === 'user' &&
-                               conversationHistoryForAPI[conversationHistoryForAPI.length -1].parts[0].text === lastUserMessageText) {
-                        // Last attempt was this user message and it likely failed to get an AI response.
-                        // Call getAIResponse with isContinuation = true, so it doesn't add user message again.
-                        getAIResponse(lastUserMessageText, true);
-                    } else {
-                        // Fallback: treat as a new send if history is empty or doesn't match
-                        displayMessage(lastUserMessageText, 'User', `user-${Date.now()}-resend`); 
-                        getAIResponse(lastUserMessageText, false);
-                    }
+                    console.log("Resending last user message to AI:", lastUserMessageText);
+                    // The `lastUserMessageText` should still be the last "user" entry in 
+                    // `conversationHistoryForAPI` if the previous AI call failed.
+                    // We call `getAIResponse` with `isContinuation = true` to prevent
+                    // it from being added to the history again.
+                    // No new user message is displayed in the UI for this action.
+                    getAIResponse(lastUserMessageText, true); 
                 } else {
                     displayError("No last user message to resend.");
                 }
             }
 
             function handleRerollAI() {
-                if (conversationHistoryForAPI.length < 2) { 
-                    displayError("Not enough history to reroll AI response.");
+                if (conversationHistoryForAPI.length < 1) { 
+                    displayError("Not enough history to identify user message for AI reroll.");
                     return;
                 }
 
-                let lastAiIndex = -1;
-                let lastUserMessageForReroll = null;
+                // We need to find the last "user" message to resubmit for the reroll.
+                // The AI's previous (bad) response should have already been NOT added to history if an error occurred,
+                // or if it was a successful but unwanted response, it IS in history.
+                
+                let lastUserMessageForRerollText = null;
+                let lastAiBubbleToRemove = lastAIResponseBubble; // The bubble we want to remove
 
-                // Find the last "model" response and the "user" message that preceded it
-                for (let i = conversationHistoryForAPI.length - 1; i >= 0; i--) {
-                    if (conversationHistoryForAPI[i].role === "model") {
-                        lastAiIndex = i;
-                        if (i > 0 && conversationHistoryForAPI[i-1].role === "user") {
-                            lastUserMessageForReroll = conversationHistoryForAPI[i-1].parts[0].text;
-                        }
-                        break;
-                    }
+                // If the last message in history is an AI's, we want to reroll that.
+                // The user message that prompted it is the one before it.
+                if (conversationHistoryForAPI.length >= 2 && 
+                    conversationHistoryForAPI[conversationHistoryForAPI.length - 1].role === 'model' &&
+                    conversationHistoryForAPI[conversationHistoryForAPI.length - 2].role === 'user') {
+                    
+                    lastUserMessageForRerollText = conversationHistoryForAPI[conversationHistoryForAPI.length - 2].parts[0].text;
+                    // Remove the last AI response from history array
+                    conversationHistoryForAPI.pop(); 
+
+                } 
+                // If the last message was a user message (meaning AI failed to respond to it),
+                // then that's the message we want to use for the reroll.
+                else if (conversationHistoryForAPI[conversationHistoryForAPI.length - 1].role === 'user') {
+                    lastUserMessageForRerollText = conversationHistoryForAPI[conversationHistoryForAPI.length - 1].parts[0].text;
+                    // No AI bubble to remove in this case, as it failed to appear.
+                    lastAiBubbleToRemove = null; 
                 }
 
-                if (lastAiIndex !== -1 && lastUserMessageForReroll) {
-                    // Remove the last AI response from history array
-                    conversationHistoryForAPI.splice(lastAiIndex, 1); 
-
-                    if (lastAIResponseBubble && lastAIResponseBubble.parentNode === chatOutput) {
-                        chatOutput.removeChild(lastAIResponseBubble);
+                if (lastUserMessageForRerollText) {
+                    if (lastAiBubbleToRemove && lastAiBubbleToRemove.parentNode === chatOutput) {
+                        chatOutput.removeChild(lastAiBubbleToRemove);
                         lastAIResponseBubble = null; 
-                    } else {
+                    } else { 
+                        // Fallback if lastAIResponseBubble isn't set or already removed: find last .ai-bubble
                         const allAiBubbles = chatOutput.querySelectorAll('.ai-bubble');
-                        if (allAiBubbles.length > 0) {
-                            chatOutput.removeChild(allAiBubbles[allAiBubbles.length - 1]);
+                        if (allAiBubbles.length > 0 && allAiBubbles[allAiBubbles.length -1] !== document.querySelector('[data-message-id="initial-ai-message"]')) {
+                           // Don't remove the initial greeting bubble
+                           chatOutput.removeChild(allAiBubbles[allAiBubbles.length - 1]);
                         }
                     }
                     
-                    console.log("Rerolling AI response for user message:", lastUserMessageForReroll);
-                    // Call getAIResponse, indicating it's a continuation (reroll) of the last user message
-                    // This will use lastUserMessageForReroll which is already the last item in the (now trimmed) history
-                    getAIResponse(lastUserMessageForReroll, true); 
+                    console.log("Rerolling AI response for user message:", lastUserMessageForRerollText);
+                    getAIResponse(lastUserMessageForRerollText, true); // isContinuation = true
 
                 } else {
-                    displayError("Could not find a valid AI response to reroll, or its preceding user message.");
+                    displayError("Could not determine the correct user message to reroll the AI response.");
                 }
             }
 
@@ -316,29 +304,32 @@
 </html>
 ```
 
-**Key Changes in this Version's JavaScript:**
+**Key Changes in this Version's JavaScript (Focus on Resend & Reroll):**
 
-1.  **Renamed `isReroll` parameter in `getAIResponse` to `isContinuation`:** This makes more sense as it now serves both the "Resend User" (if it's a continuation of a failed attempt) and "Reroll AI" features.
-    * If `isContinuation` is `false` (a brand new message from "Send" or a resend that should act like a new turn), the user message is pushed to `conversationHistoryForAPI`.
-    * If `isContinuation` is `true` (an AI reroll, or a user resend after an AI error), the `userMessageTextForAPI` (which is the *previous* user message) is *not* re-added to `conversationHistoryForAPI` because it's assumed to already be the last "user" entry there.
-2.  **Modified `handleResendMessage()`:**
-    * It no longer calls `displayMessage()` for the user's last message.
-    * It now tries to determine if the last action was the user sending that `lastUserMessageText` and the AI failed to respond. If so, it calls `getAIResponse(lastUserMessageText, true)` (as a continuation).
-    * If the AI *did* respond successfully last time, and the user hits "Resend User," it treats `lastUserMessageText` as a *new* prompt from the user (so it calls `getAIResponse(lastUserMessageText, false)` and the message *will* be added to history as a new user turn, but not re-displayed by `handleResendMessage` itself – `getAIResponse` then calls `displayMessage` for the AI response).
-    * This logic is a bit more complex to perfectly achieve "don't duplicate in history" for a resend after AI error. The goal is that `conversationHistoryForAPI` remains clean. If an API call fails, the user message *that caused the failure* might need to be popped from `conversationHistoryForAPI` within the `getAIResponse` error handling if `!isContinuation`. I've added logic for this.
-3.  **Modified `handleRerollAI()`:**
-    * It now correctly identifies the last user message text that prompted the AI response to be rerolled.
-    * It calls `getAIResponse(lastUserMessageForReroll, true)`, ensuring `isContinuation` is true.
-4.  **Error Handling in `getAIResponse()`:**
-    * If an API call fails (non-OK response or network error) *and* it was a new message (`!isContinuation`), the function now tries to `pop` the just-added user message from `conversationHistoryForAPI` to keep the history clean of failed attempts.
+1.  **`getAIResponse(userMessageTextForAPI, isContinuation = false)`:**
+    * If `!isContinuation` (it's a fresh "Send"), it adds the `userMessageTextForAPI` to `conversationHistoryForAPI`.
+    * If an error occurs (from proxy or network), it calls `displayError()` and returns. **Crucially, it no longer tries to `pop()` the user message from `conversationHistoryForAPI` here.** The history should reflect the attempted user message.
 
-**To achieve your "resend to AI command only" for avoiding history clog after an error:**
+2.  **`handleSendMessage()`:**
+    * When a new message is sent, it calls `displayMessage()` for the user, stores `lastUserMessageText`, and calls `getAIResponse(messageText, false)`.
 
-The current `handleResendMessage` combined with the updated `getAIResponse` (which now removes the user message from history on error if it was a new send) should work better.
-When an error occurs (e.g., 503), `getAIResponse` will call `displayError` (not `displayMessage`) and will try to pop the failed user message from `conversationHistoryForAPI`.
-When you then click "Resend User":
-* `lastUserMessageText` still holds your message.
-* `handleResendMessage` will call `getAIResponse(lastUserMessageText, true)` (if the last entry in history is indeed that user message because the AI failed to respond and the user message wasn't popped, or `false` if it should be treated as a new attempt based on current history state).
-* The key is that `displayMessage` for the *user's turn* is NOT called again by `handleResendMessage`.
+3.  **`handleResendMessage()` (Refined):**
+    * It now simply calls `getAIResponse(lastUserMessageText, true)`.
+    * The `isContinuation = true` tells `getAIResponse` NOT to add `lastUserMessageText` to `conversationHistoryForAPI` again, because it should already be there as the last "user" entry (especially if the previous AI call for it failed).
+    * **No `displayMessage()` for the user's turn is called here.** This should prevent the visual duplication of the user's message in the chat UI when resending.
 
-This should give you the behavior you're looking for: errors go to the error log, and resending the user's message doesn't add a duplicate visual entry in the chat UI just for the act of resending. The message will still be processed by the AI as if it's the current user tu
+4.  **`handleRerollAI()` (Refined):**
+    * The logic to find the `lastUserMessageForRerollText` is adjusted to better handle cases where the AI might have failed to respond previously.
+    * It correctly removes the last AI message from both the `conversationHistoryForAPI` and the UI.
+    * It then calls `getAIResponse(lastUserMessageForRerollText, true)` to get a new AI response for that preceding user message.
+
+**How this should fix the "Resend User" duplication:**
+
+* When you first send a message (e.g., "Good morning..."), `handleSendMessage` displays it once. `getAIResponse` adds it to history.
+* If the AI call fails (e.g., 503 error), `displayError` is called. The `conversationHistoryForAPI` still ends with your "Good morning..." user message.
+* When you click "Resend User," `handleResendMessage` calls `getAIResponse("Good morning...", true)`.
+    * Because `isContinuation` is `true`, `getAIResponse` does *not* add "Good morning..." to `conversationHistoryForAPI` again (it's already the last entry).
+    * `handleResendMessage` itself does *not* call `displayMessage` for the user.
+* Thus, your user message should only appear once in the UI, and the API call is retried with the correct history.
+
+Please replace the script in your `index.html` with this updated version, commit, push, and let me know if the "Resend User" behavior is now as expected (especially after an erro
