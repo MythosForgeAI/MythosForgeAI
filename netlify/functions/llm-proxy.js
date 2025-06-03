@@ -82,7 +82,7 @@
             </div>
 
             <div class="flex-1 flex flex-col bg-white overflow-hidden">
-                <div id="loading-indicator" class="hidden">AI is thinking...</div>
+                <div id="loading-indicator" class="hidden">AI is thinking... (Attempt 1)</div>
                 <div id="chat-output" class="flex-1 p-4 md:p-6 space-y-3 overflow-y-auto message-container">
                     </div>
 
@@ -114,13 +114,11 @@
             const errorLogOutput = document.getElementById('error-log-output');
             const resendButton = document.getElementById('resend-button');
             const rerollAIButton = document.getElementById('reroll-ai-button');
-            const clearErrorLogButton = document.getElementById('clear-error-log-button'); // New
-            const loadingIndicator = document.getElementById('loading-indicator'); // New
+            const clearErrorLogButton = document.getElementById('clear-error-log-button'); 
+            const loadingIndicator = document.getElementById('loading-indicator'); 
 
-            // --- Element Existence Checks ---
             if (!chatOutput || !messageInput || !sendButton || !personaInput || !maxHistoryInput || !errorLogOutput || !resendButton || !rerollAIButton || !clearErrorLogButton || !loadingIndicator) {
                 console.error("One or more critical UI elements are missing!");
-                // Disable buttons if elements are missing
                 [sendButton, resendButton, rerollAIButton, clearErrorLogButton].forEach(btn => {
                     if (btn) btn.disabled = true;
                 });
@@ -131,12 +129,11 @@
             let lastUserMessageText = ""; 
             let lastAIResponseBubble = null; 
 
-            // --- Local Storage Functions ---
             function saveToLocalStorage() {
                 localStorage.setItem('mythosForgePersona', personaInput.value);
                 localStorage.setItem('mythosForgeMaxHistory', maxHistoryInput.value);
                 localStorage.setItem('mythosForgeChatHistory', JSON.stringify(conversationHistoryForAPI));
-                localStorage.setItem('mythosForgeLastError', lastUserMessageText); // Save last user message too
+                localStorage.setItem('mythosForgeLastError', lastUserMessageText); 
             }
 
             function loadFromLocalStorage() {
@@ -151,7 +148,7 @@
 
                 if (savedChatHistory) {
                     conversationHistoryForAPI = JSON.parse(savedChatHistory);
-                    chatOutput.innerHTML = ''; // Clear any default HTML message
+                    chatOutput.innerHTML = ''; 
                     conversationHistoryForAPI.forEach(msg => {
                         if (msg.role === 'user') {
                             displayMessage(msg.parts[0].text, 'User');
@@ -160,12 +157,10 @@
                         }
                     });
                 } else {
-                     // If no history, display a default initial message
                     displayMessage("Set my persona, adjust history length, and send a message!", 'AI', 'initial-ai-message');
                 }
             }
             
-            // --- Display Functions ---
             function displayMessage(messageText, sender, messageId = null) {
                 if (!chatOutput) { console.error("displayMessage called but chatOutput element is not available."); return; }
                 const messageElement = document.createElement('div');
@@ -184,55 +179,69 @@
                 chatOutput.scrollTop = chatOutput.scrollHeight; 
             }
 
-            function displayError(errorMessage, isFinal = true) { // isFinal flag for retry logic
-                if (!errorLogOutput) { console.error("displayError called but errorLogOutput is not available."); return; }
-                if (isFinal) { // Only display if it's the final error after retries
-                    const errorElement = document.createElement('div');
-                    errorElement.className = 'error-message'; 
-                    errorElement.textContent = `[${new Date().toLocaleTimeString()}] ${errorMessage}`;
-                    errorLogOutput.appendChild(errorElement);
-                    errorLogOutput.scrollTop = errorLogOutput.scrollHeight;
-                } else {
-                    console.warn("Attempting retry for error:", errorMessage); // Log retry attempts
-                }
+            function logToUIError(errorMessage) { // Renamed for clarity
+                if (!errorLogOutput) { console.error("logToUIError called but errorLogOutput is not available."); return; }
+                const errorElement = document.createElement('div');
+                errorElement.className = 'error-message'; 
+                errorElement.textContent = `[${new Date().toLocaleTimeString()}] ${errorMessage}`;
+                errorLogOutput.appendChild(errorElement);
+                errorLogOutput.scrollTop = errorLogOutput.scrollHeight;
             }
 
-            // --- API Call with Retries ---
-            async function fetchWithRetries(url, options, retries = 3, backoff = 1000) {
-                loadingIndicator.classList.remove('hidden');
-                try {
-                    const response = await fetch(url, options);
-                    if (!response.ok) {
-                        // Specific errors to retry on
-                        if ((response.status === 503 || response.status === 500 || response.status === 502 || response.status === 504) && retries > 0) {
-                            displayError(`API Error (${response.status}), retrying in ${backoff / 1000}s... (${retries} left)`, false);
-                            await new Promise(resolve => setTimeout(resolve, backoff));
-                            return fetchWithRetries(url, options, retries - 1, backoff * 2); // Exponential backoff
+            async function fetchWithRetries(url, options, totalRetries = 3) {
+                let attempt = 0;
+                let currentBackoff = 1000; // Initial backoff 1 second
+
+                while (attempt <= totalRetries) {
+                    attempt++;
+                    loadingIndicator.textContent = `AI is thinking... (Attempt ${attempt} of ${totalRetries + 1})`;
+                    loadingIndicator.classList.remove('hidden');
+                    
+                    try {
+                        const response = await fetch(url, options);
+                        if (response.ok) {
+                            return await response.json(); // Success
                         }
-                        // For other non-ok responses, or if retries exhausted, treat as final error
-                        const errorData = await response.json().catch(() => ({ error: `Request failed with status ${response.status}: ${response.statusText}` }));
-                        throw errorData; // Throw an object that can be caught and parsed
+
+                        // If response is not ok, check if it's a retryable error
+                        const retryableStatuses = [500, 502, 503, 504];
+                        if (retryableStatuses.includes(response.status) && attempt <= totalRetries) {
+                            const errorTextForConsole = await response.text().catch(() => `Status ${response.status}`);
+                            console.warn(`API Error (${response.status}): ${errorTextForConsole}. Retrying in ${currentBackoff / 1000}s... (${totalRetries - attempt +1} retries left)`);
+                            await new Promise(resolve => setTimeout(resolve, currentBackoff));
+                            currentBackoff *= 2; // Exponential backoff
+                            continue; // Go to next iteration of the while loop
+                        }
+                        
+                        // If not retryable or retries exhausted, parse error and throw
+                        const errorData = await response.json().catch(() => ({ 
+                            error: `Request failed with status ${response.status}: ${response.statusText || 'Unknown server error'}` 
+                        }));
+                        throw errorData; // This will be caught by the outer catch block
+
+                    } catch (networkOrThrownError) {
+                        // This catches initial network errors (fetch itself fails) OR errors deliberately thrown above
+                        if (attempt <= totalRetries && (networkOrThrownError.message?.includes('Failed to fetch') || networkOrThrownError.name === 'AbortError')) {
+                            console.warn(`Network Error: ${networkOrThrownError.message}. Retrying in ${currentBackoff / 1000}s... (${totalRetries - attempt + 1} retries left)`);
+                            await new Promise(resolve => setTimeout(resolve, currentBackoff));
+                            currentBackoff *= 2;
+                            continue; // Go to next iteration
+                        }
+                        // If retries exhausted or it's an error re-thrown from the !response.ok block
+                        console.error("Fetch with retries final error:", networkOrThrownError);
+                        throw networkOrThrownError; // Re-throw to be caught by getAIResponse
                     }
-                    return await response.json();
-                } catch (error) { // Catches network errors and errors thrown from non-ok responses
-                    if (retries > 0 && (error.message.includes('Failed to fetch') || error.name === 'AbortError')) { // Retry on network errors
-                        displayError(`Network Error, retrying in ${backoff / 1000}s... (${retries} left)`, false);
-                        await new Promise(resolve => setTimeout(resolve, backoff));
-                        return fetchWithRetries(url, options, retries - 1, backoff * 2);
-                    }
-                    console.error("Fetch with retries final error:", error);
-                    throw error; // Re-throw final error to be caught by getAIResponse
-                } finally {
-                    // This might hide too soon if retries are quick. Better to hide in getAIResponse.
-                    // loadingIndicator.classList.add('hidden'); 
                 }
+                // Should not be reached if logic is correct, but as a fallback:
+                throw new Error("Max retries reached without success.");
             }
+
 
             async function getAIResponse(userMessageTextForAPI, isContinuation = false) {
                 if (!isContinuation) {
                     conversationHistoryForAPI.push({ role: "user", parts: [{ text: userMessageTextForAPI }] });
                 }
-                saveToLocalStorage(); // Save history including new user message
+                saveToLocalStorage(); 
 
                 const yourNetlifyProxyUrl = "/.netlify/functions/llm-proxy"; 
                 const personaValue = personaInput.value.trim(); 
@@ -247,7 +256,7 @@
                 console.log("Sending persona:", personaValue);
                 console.log("Sending conversation history for API call:", JSON.stringify(historyToSend, null, 2));
 
-                loadingIndicator.classList.remove('hidden'); // Show loading indicator
+                // Loading indicator is now handled inside fetchWithRetries
 
                 try {
                     const payloadToProxy = {
@@ -259,26 +268,26 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', },
                         body: JSON.stringify(payloadToProxy)
-                    });
+                    }); // fetchWithRetries will handle showing/hiding loading per attempt
                     
                     if (result.aiMessage) {
                         const aiResponseText = result.aiMessage;
                         displayMessage(aiResponseText, 'AI', `ai-${Date.now()}`);
                         conversationHistoryForAPI.push({ role: "model", parts: [{ text: aiResponseText }] });
-                    } else if (result.error) { // Error successfully returned from proxy
+                    } else if (result.error) { 
                         console.error("Error message from proxy function:", result.error);
-                        displayError(`Error from AI service: ${result.error}`); 
-                    } else { // Unexpected success structure from proxy
+                        logToUIError(`Error from AI service: ${result.error}`); 
+                    } else { 
                         console.error("Unexpected response structure from proxy:", result);
-                        displayError("Received an unexpected response from the AI service."); 
+                        logToUIError("Received an unexpected response from the AI service."); 
                     }
-                } catch (error) { // Catches final error from fetchWithRetries or other errors
+                } catch (error) { 
                     console.error("Final error after retries or other issue in getAIResponse:", error);
-                    const errorMessage = error.error || error.message || "An unknown error occurred.";
-                    displayError(errorMessage); 
+                    const errorMessage = error.error || error.message || "An unknown error occurred after retries.";
+                    logToUIError(errorMessage); 
                 } finally {
-                    loadingIndicator.classList.add('hidden'); // Hide loading indicator
-                    saveToLocalStorage(); // Save history including AI response or after error
+                    loadingIndicator.classList.add('hidden'); // Ensure loading indicator is hidden finally
+                    saveToLocalStorage(); 
                 }
             }
 
@@ -296,19 +305,15 @@
             function handleResendMessage() {
                 if (lastUserMessageText) {
                     console.log("Resending last user message to AI:", lastUserMessageText);
-                    // The lastUserMessageText should be the last 'user' entry if AI failed or we want to retry.
-                    // Call getAIResponse with isContinuation = true, which assumes lastUserMessageText is already
-                    // correctly the last 'user' part of conversationHistoryForAPI that needs a response.
-                    // No new user message is displayed in the UI for this action.
                     getAIResponse(lastUserMessageText, true); 
                 } else {
-                    displayError("No last user message to resend.");
+                    logToUIError("No last user message to resend.");
                 }
             }
 
             function handleRerollAI() {
                 if (conversationHistoryForAPI.length < 1) { 
-                    displayError("Not enough history to identify user message for AI reroll.");
+                    logToUIError("Not enough history to identify user message for AI reroll.");
                     return;
                 }
                 
@@ -320,7 +325,7 @@
                     conversationHistoryForAPI[conversationHistoryForAPI.length - 2].role === 'user') {
                     
                     lastUserMessageForRerollText = conversationHistoryForAPI[conversationHistoryForAPI.length - 2].parts[0].text;
-                    conversationHistoryForAPI.pop(); // Remove last AI response
+                    conversationHistoryForAPI.pop(); 
 
                 } else if (conversationHistoryForAPI[conversationHistoryForAPI.length - 1].role === 'user') {
                     lastUserMessageForRerollText = conversationHistoryForAPI[conversationHistoryForAPI.length - 1].parts[0].text;
@@ -336,7 +341,7 @@
                         const initialAiBubble = document.querySelector('[data-message-id="initial-ai-message"]');
                         if (allAiBubbles.length > 0) {
                             const lastBubble = allAiBubbles[allAiBubbles.length - 1];
-                            if (lastBubble !== initialAiBubble) { // Don't remove initial greeting
+                            if (lastBubble !== initialAiBubble) { 
                                 chatOutput.removeChild(lastBubble);
                             }
                         }
@@ -344,7 +349,7 @@
                     console.log("Rerolling AI response for user message:", lastUserMessageForRerollText);
                     getAIResponse(lastUserMessageForRerollText, true); 
                 } else {
-                    displayError("Could not determine user message for AI reroll.");
+                    logToUIError("Could not determine user message for AI reroll.");
                 }
             }
 
@@ -359,45 +364,37 @@
             if (rerollAIButton) rerollAIButton.addEventListener('click', handleRerollAI);
             if (clearErrorLogButton) clearErrorLogButton.addEventListener('click', handleClearErrorLog);
 
-            // --- Load from Local Storage on Page Load ---
             loadFromLocalStorage();
 
-            // --- Save to Local Storage on Input Change ---
             if(personaInput) personaInput.addEventListener('blur', saveToLocalStorage);
             if(maxHistoryInput) maxHistoryInput.addEventListener('change', saveToLocalStorage);
-
-
         });
     </script>
 </body>
 </html>
 ```
 
-**Summary of Key Changes in this Version:**
+**Key Changes in this Version's JavaScript:**
 
-1.  **HTML Additions:**
-    * `<div id="loading-indicator" class="hidden">AI is thinking...</div>` (placed above the chat output).
-    * `<button id="clear-error-log-button"...>Clear Log</button>` added in the settings sidebar.
-    * Made the error log container `flex-1` within its new parent `div` so it uses available space better if many errors.
-2.  **JavaScript Additions & Modifications:**
-    * **`loadingIndicator` and `clearErrorLogButton` elements fetched.**
-    * **`saveToLocalStorage()` function:** Saves persona, max history, current chat history, and last user message.
-    * **`loadFromLocalStorage()` function:** Loads these values on page start and re-renders the chat history. The initial hardcoded AI message in HTML is removed; it's now added by `loadFromLocalStorage` if no history exists.
-    * **`fetchWithRetries()` function:**
-        * A new async helper function that wraps the `fetch` call.
-        * Takes `url`, `options`, `retries` (default 3), and `backoff` (default 1s) as parameters.
-        * If the response is not `ok` and the status code is retryable (500, 503, 502, 504), it waits with exponential backoff and tries again.
-        * Also retries on network errors (`Failed to fetch`, `AbortError`).
-        * Displays non-final errors to the console (or a "retrying" message to `displayError` with `isFinal=false`).
-        * Returns the final parsed JSON result or throws the final error.
-    * **Modified `getAIResponse()`:**
-        * Now calls `await fetchWithRetries(...)` instead of `await fetch(...)`.
-        * Shows/hides the `loadingIndicator` at the start and end (in `finally` block) of the API call process.
-        * Error handling now mainly deals with the *final* error passed from `fetchWithRetries` and calls `displayError` with `isFinal=true`.
-        * Calls `saveToLocalStorage()` after adding user message and after AI response/error.
-    * **Modified `displayError(errorMessage, isFinal = true)`:** Added an `isFinal` parameter. Only appends to the visual error log if `isFinal` is true. Logs retry attempts to the console.
-    * **`handleClearErrorLog()` function:** Clears the `errorLogOutput.innerHTML`.
-    * Event listener for `clearErrorLogButton`.
-    * Event listeners on `personaInput` and `maxHistoryInput` to save changes to local storage (`blur` for persona, `change` for max history).
+1.  **Renamed `displayError` to `logToUIError`:** To be more explicit about its purpose.
+2.  **Modified `fetchWithRetries(url, options, totalRetries = 3)`:**
+    * It now uses a `while` loop for retries, making the attempt count clearer.
+    * `loadingIndicator.textContent` is updated to show the current attempt number.
+    * **Console Logging for Retries:** When a retryable error occurs (500, 502, 503, 504, or network errors like "Failed to fetch"), it logs a message to the `console.warn` like: `API Error (502): [details]. Retrying in Xs... (Y retries left)`. It does *not* call `logToUIError` during these intermediate retry attempts.
+    * **Final Error Handling:** If all retries are exhausted, or if a non-retryable HTTP error occurs, it `throw`s an error object.
+3.  **Modified `getAIResponse()`:**
+    * The `catch` block in `getAIResponse` now catches the *final* error thrown by `fetchWithRetries`.
+    * It then calls `logToUIError(errorMessage)` to display this final error in your UI error log.
+4.  **Loading Indicator:** The `loadingIndicator` is shown at the start of each attempt in `fetchWithRetries` and hidden in the `finally` block of `getAIResponse` (ensuring it's hidden even if all retries fail).
 
-This version is significantly more robust for testing. The local storage will be a big help for you, and the retry logic should make dealing with transient API errors much smoother. The loading indicator also improves the user experien
+**How it should work now:**
+
+* When you send a message:
+    * The "AI is thinking... (Attempt 1 of 4)" message appears.
+    * If the first call to your proxy (and then to Gemini) fails with a 502:
+        * You should see a warning in your **browser's developer console** (not the UI error log) indicating a retry is happening.
+        * The loading indicator will update to "AI is thinking... (Attempt 2 of 4)".
+        * This will repeat for up to `totalRetries` (default 3 additional attempts after the first one).
+    * Only if *all* attempts fail will the final error message be displayed in your UI's "Error Log" section.
+
+This should give you the behavior you're looking for: silent retries for transient issues, with feedback in the console, and only the final unrecoverable error shown to the user in the dedicated l
