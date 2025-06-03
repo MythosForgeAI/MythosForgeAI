@@ -7,17 +7,45 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', sans-serif; 
         }
-        #chat-output::-webkit-scrollbar { width: 8px; }
-        #chat-output::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
-        #chat-output::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
-        #chat-output::-webkit-scrollbar-thumb:hover { background: #555; }
+        #chat-output::-webkit-scrollbar, #error-log-output::-webkit-scrollbar {
+            width: 8px;
+        }
+        #chat-output::-webkit-scrollbar-track, #error-log-output::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #chat-output::-webkit-scrollbar-thumb, #error-log-output::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #chat-output::-webkit-scrollbar-thumb:hover, #error-log-output::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
         .chat-bubble { max-width: 80%; padding: 10px 15px; border-radius: 18px; margin-bottom: 10px; word-wrap: break-word; line-height: 1.5; }
         .user-bubble { background-color: #c8e6c9; align-self: flex-end; border-bottom-right-radius: 5px; }
         .ai-bubble { background-color: #e0e0e0; align-self: flex-start; border-bottom-left-radius: 5px; }
         .message-container { display: flex; flex-direction: column; }
         .settings-input { padding: 10px; border: 1px solid #D1D5DB; border-radius: 8px; margin-bottom: 8px; width: 100%; box-sizing: border-box; }
+        #error-log-output {
+            max-height: 100px; /* Limit height of error log */
+            overflow-y: auto;
+            border: 1px solid #fecaca; /* Light red border */
+            padding: 8px;
+            margin-top: 10px;
+            border-radius: 8px;
+            background-color: #fff5f5; /* Lighter red background */
+        }
+        .error-message {
+            padding: 4px;
+            font-size: 0.875rem; /* text-sm */
+            color: #b91c1c; /* red-700 */
+            background-color: #fee2e2; /* red-100 */
+            border-radius: 4px;
+            margin-bottom: 4px;
+            word-wrap: break-word;
+        }
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     </style>
 </head>
@@ -26,25 +54,30 @@
     <div class="w-full max-w-4xl bg-white shadow-2xl rounded-xl flex flex-col h-[95vh] md:h-[90vh] mt-2 md:mt-0">
         <header class="bg-indigo-700 text-white p-4 rounded-t-xl flex items-center justify-between">
             <h1 class="text-xl md:text-2xl font-semibold">MythosForgeAI - Chat Prototype</h1>
-            <div></div> </header>
+            <div></div> 
+        </header>
 
         <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
-            
             <div class="w-full md:w-1/3 lg:w-1/4 p-3 md:p-4 border-b md:border-b-0 md:border-r border-gray-300 bg-gray-100 overflow-y-auto">
                 <div>
                     <label for="persona-input" class="block text-xs md:text-sm font-medium text-gray-800 mb-1">AI Persona Instructions:</label>
-                    <textarea id="persona-input" rows="4" class="settings-input focus:ring-indigo-600 focus:border-indigo-600 text-sm" placeholder="e.g., You are a grumpy pirate captain named One-Eye Jack."></textarea>
+                    <textarea id="persona-input" rows="4" class="settings-input focus:ring-indigo-600 focus:border-indigo-600 text-sm" placeholder="e.g., You are a grumpy pirate captain..."></textarea>
                 </div>
                 <div class="mt-2">
                     <label for="max-history-input" class="block text-xs md:text-sm font-medium text-gray-800 mb-1">Chat History Turns to Send (Test):</label>
                     <input type="number" id="max-history-input" value="10" min="0" max="50" class="settings-input focus:ring-indigo-600 focus:border-indigo-600 text-sm w-24">
                 </div>
+                <div class="mt-4">
+                    <h3 class="text-xs md:text-sm font-medium text-gray-800 mb-1">Error Log:</h3>
+                    <div id="error-log-output">
+                        </div>
                 </div>
+            </div>
 
             <div class="flex-1 flex flex-col bg-white overflow-hidden">
                 <div id="chat-output" class="flex-1 p-4 md:p-6 space-y-3 overflow-y-auto message-container">
                     <div class="chat-bubble ai-bubble">
-                        Set my persona and send a message!
+                        Set my persona, adjust history length, and send a message!
                     </div>
                 </div>
 
@@ -53,6 +86,9 @@
                         <input type="text" id="message-input" class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none text-sm md:text-base" placeholder="Type your message...">
                         <button id="send-button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 md:px-6 rounded-lg transition duration-150 ease-in-out text-sm md:text-base">
                             Send
+                        </button>
+                        <button id="resend-button" class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-4 md:px-6 rounded-lg transition duration-150 ease-in-out text-sm md:text-base">
+                            Resend
                         </button>
                     </div>
                 </div>
@@ -67,16 +103,26 @@
             const sendButton = document.getElementById('send-button');
             const personaInput = document.getElementById('persona-input'); 
             const maxHistoryInput = document.getElementById('max-history-input'); 
+            const errorLogOutput = document.getElementById('error-log-output'); // New
+            const resendButton = document.getElementById('resend-button'); // New
 
+            // --- Element Existence Checks ---
             if (!chatOutput) console.error("Chat output element not found!");
             if (!messageInput) console.error("Message input element not found!");
             if (!sendButton) console.error("Send button element not found!");
             if (!personaInput) console.error("Persona input element not found!");
             if (!maxHistoryInput) console.error("Max history input element not found!");
+            if (!errorLogOutput) console.error("Error log output element not found!");
+            if (!resendButton) console.error("Resend button element not found!");
 
             let conversationHistoryForAPI = []; 
+            let lastUserMessageText = ""; // To store the last sent user message
 
+            /**
+             * Displays a regular message in the chat output.
+             */
             function displayMessage(messageText, sender) {
+                // ... (same as before)
                 if (!chatOutput) { console.error("displayMessage called but chatOutput element is not available."); return; }
                 const messageElement = document.createElement('div');
                 messageElement.classList.add('chat-bubble');
@@ -91,6 +137,18 @@
                 chatOutput.scrollTop = chatOutput.scrollHeight; 
             }
 
+            /**
+             * Displays an error message in the dedicated error log area.
+             */
+            function displayError(errorMessage) {
+                if (!errorLogOutput) { console.error("displayError called but errorLogOutput is not available."); return; }
+                const errorElement = document.createElement('div');
+                errorElement.className = 'error-message'; // Use the new CSS class
+                errorElement.textContent = `[${new Date().toLocaleTimeString()}] ${errorMessage}`;
+                errorLogOutput.appendChild(errorElement);
+                errorLogOutput.scrollTop = errorLogOutput.scrollHeight;
+            }
+
             async function getAIResponse(userMessageText) {
                 conversationHistoryForAPI.push({ role: "user", parts: [{ text: userMessageText }] });
 
@@ -98,7 +156,6 @@
                 const personaValue = personaInput.value.trim(); 
                 const maxHistoryTurns = parseInt(maxHistoryInput.value, 10) || 10; 
                 const maxHistoryItems = maxHistoryTurns * 2; 
-
 
                 let historyToSend = [...conversationHistoryForAPI]; 
                 if (historyToSend.length > maxHistoryItems) {
@@ -109,9 +166,6 @@
                 console.log("Sending persona:", personaValue);
                 console.log("Sending conversation history (trimmed for API call):", JSON.stringify(historyToSend, null, 2));
 
-
-                let aiResponseText = "Error: Could not reach the AI service. Please check console."; 
-
                 try {
                     const payloadToProxy = {
                         history: historyToSend, 
@@ -120,39 +174,34 @@
 
                     const response = await fetch(yourNetlifyProxyUrl, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
+                        headers: { 'Content-Type': 'application/json', },
                         body: JSON.stringify(payloadToProxy)
                     });
 
+                    const result = await response.json(); // Try to parse JSON regardless of response.ok first
+
                     if (!response.ok) {
-                        const errorData = await response.json().catch(() => response.text()); 
-                        console.error(`Error from proxy (Status ${response.status}):`, errorData);
-                        aiResponseText = `Error: ${ (typeof errorData === 'string' ? errorData : errorData.error) || `Request to AI service failed (${response.status})`}`;
+                        const errorMsg = result.error || `Request to AI service failed (${response.status}, ${response.statusText})`;
+                        console.error(`Error from proxy (Status ${response.status}):`, result);
+                        displayError(errorMsg); // Display in error log
+                        // Do NOT add this error to conversationHistoryForAPI or display as AI message
+                        return; // Stop further processing for this turn
+                    }
+                    
+                    if (result.aiMessage) {
+                        const aiResponseText = result.aiMessage;
+                        displayMessage(aiResponseText, 'AI');
+                        conversationHistoryForAPI.push({ role: "model", parts: [{ text: aiResponseText }] });
+                    } else if (result.error) {
+                        console.error("Error message from proxy function:", result.error);
+                        displayError(`Error from AI service: ${result.error}`); // Display in error log
                     } else {
-                        const result = await response.json(); 
-                        if (result.aiMessage) {
-                            aiResponseText = result.aiMessage;
-                        } else if (result.error) {
-                            console.error("Error message from proxy function:", result.error);
-                            aiResponseText = `Error from AI service: ${result.error}`;
-                        } else {
-                            console.error("Unexpected response structure from proxy:", result);
-                            aiResponseText = "Received an unexpected response from the AI service.";
-                        }
+                        console.error("Unexpected response structure from proxy:", result);
+                        displayError("Received an unexpected response from the AI service."); // Display in error log
                     }
                 } catch (error) {
                     console.error("Network or fetch error calling your backend proxy:", error);
-                    aiResponseText = "Network error or proxy is unreachable. Please check console and Netlify function logs.";
-                }
-                
-                if (aiResponseText) { 
-                    conversationHistoryForAPI.push({ role: "model", parts: [{ text: aiResponseText }] });
-                }
-                
-                if (aiResponseText) {
-                     displayMessage(aiResponseText, 'AI');
+                    displayError(`Network error or proxy is unreachable: ${error.message}`); // Display in error log
                 }
             }
 
@@ -161,11 +210,24 @@
                 const messageText = messageInput.value.trim();
                 if (messageText) {
                     displayMessage(messageText, 'User'); 
+                    lastUserMessageText = messageText; // Store for resend
                     messageInput.value = ''; 
                     getAIResponse(messageText); 
                 }
             }
+            
+            function handleResendMessage() {
+                if (lastUserMessageText) {
+                    console.log("Resending last message:", lastUserMessageText);
+                    displayMessage(lastUserMessageText, 'User'); // Show it in chat again
+                    getAIResponse(lastUserMessageText);      // Send to AI
+                } else {
+                    displayError("No last user message to resend.");
+                    console.log("No last user message to resend.");
+                }
+            }
 
+            // --- Event Listeners ---
             if (sendButton) {
                 sendButton.addEventListener('click', handleSendMessage);
             } else {
@@ -181,7 +243,40 @@
             } else {
                 console.error("Message input not found, cannot add keypress listener.");
             }
+
+            if (resendButton) {
+                resendButton.addEventListener('click', handleResendMessage);
+            } else {
+                console.error("Resend button not found, cannot add click listener.");
+            }
         });
     </script>
 </body>
 </html>
+```
+
+**Key Changes in this version:**
+
+1.  **HTML Structure:**
+    * A new `<div id="error-log-output">` has been added within the settings sidebar.
+    * A new `<button id="resend-button">Resend</button>` has been added next to the "Send" button.
+2.  **CSS:**
+    * Basic styling for `#error-log-output` and `.error-message` to make the error log visible and distinct.
+3.  **JavaScript:**
+    * **`errorLogOutput` and `resendButton` elements:** These are now fetched by ID.
+    * **`lastUserMessageText` variable:** Added to store the last message typed by the user.
+    * **`displayError(errorMessage)` function:** A new function to append formatted error messages to the `error-log-output` div.
+    * **Modified `getAIResponse()`:**
+        * When `!response.ok` or a `catch` block is triggered, it now calls `displayError()` instead of `displayMessage()`.
+        * Error messages are **not** added to `conversationHistoryForAPI`.
+        * If an error occurs, it `return`s early to prevent adding a faulty AI response to the history.
+    * **Updated `handleSendMessage()`:** It now stores the `messageText` into `lastUserMessageText` before sending.
+    * **New `handleResendMessage()` function:** Called when the "Resend" button is clicked. It retrieves `lastUserMessageText`, displays it again as a user message (so it appears in the chat flow as if re-typed), and then calls `getAIResponse()` with it.
+    * Event listener added for the `resendButton`.
+
+After you replace your `index.html` with this code, commit, push, and let Netlify deploy:
+* Errors from the API or proxy should now appear in the "Error Log:" section in the sidebar.
+* The main chat area should only contain successful user-AI interactions.
+* The "Resend" button should allow you to easily retry your last typed message.
+
+This should make your testing process much clean
