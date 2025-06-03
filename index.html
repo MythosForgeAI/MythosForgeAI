@@ -71,6 +71,9 @@
                     <label for="max-history-input" class="block text-xs md:text-sm font-medium text-gray-800 mb-1">Chat History Turns to Send (Test):</label>
                     <input type="number" id="max-history-input" value="10" min="0" max="50" class="settings-input focus:ring-indigo-600 focus:border-indigo-600 text-sm w-24">
                 </div>
+                <div class="mt-3">
+                     <button id="clear-chat-history-button" class="w-full text-xs bg-amber-500 hover:bg-amber-600 text-white py-2 px-3 rounded">Clear Chat History</button>
+                </div>
                 <div id="error-log-output-container" class="mt-4 flex-1 flex flex-col overflow-hidden">
                     <div class="flex justify-between items-center mb-1">
                         <h3 class="text-xs md:text-sm font-medium text-gray-800">Error Log:</h3>
@@ -115,11 +118,12 @@
             const resendButton = document.getElementById('resend-button');
             const rerollAIButton = document.getElementById('reroll-ai-button');
             const clearErrorLogButton = document.getElementById('clear-error-log-button'); 
+            const clearChatHistoryButton = document.getElementById('clear-chat-history-button'); // New
             const loadingIndicator = document.getElementById('loading-indicator'); 
 
-            if (!chatOutput || !messageInput || !sendButton || !personaInput || !maxHistoryInput || !errorLogOutput || !resendButton || !rerollAIButton || !clearErrorLogButton || !loadingIndicator) {
+            if (!chatOutput || !messageInput || !sendButton || !personaInput || !maxHistoryInput || !errorLogOutput || !resendButton || !rerollAIButton || !clearErrorLogButton || !clearChatHistoryButton || !loadingIndicator) {
                 console.error("One or more critical UI elements are missing!");
-                [sendButton, resendButton, rerollAIButton, clearErrorLogButton].forEach(btn => {
+                [sendButton, resendButton, rerollAIButton, clearErrorLogButton, clearChatHistoryButton].forEach(btn => {
                     if (btn) btn.disabled = true;
                 });
                 return; 
@@ -129,35 +133,41 @@
             let lastUserMessageText = ""; 
             let lastAIResponseBubble = null; 
 
+            const initialAIMessage = "Set my persona, adjust history length, and send a message!";
+
             function saveToLocalStorage() {
                 localStorage.setItem('mythosForgePersona', personaInput.value);
                 localStorage.setItem('mythosForgeMaxHistory', maxHistoryInput.value);
                 localStorage.setItem('mythosForgeChatHistory', JSON.stringify(conversationHistoryForAPI));
-                localStorage.setItem('mythosForgeLastError', lastUserMessageText); 
+                localStorage.setItem('mythosForgeLastUserMessage', lastUserMessageText); // Corrected key
             }
 
             function loadFromLocalStorage() {
                 const savedPersona = localStorage.getItem('mythosForgePersona');
                 const savedMaxHistory = localStorage.getItem('mythosForgeMaxHistory');
                 const savedChatHistory = localStorage.getItem('mythosForgeChatHistory');
-                const savedLastUserMessage = localStorage.getItem('mythosForgeLastError');
+                const savedLastUserMessage = localStorage.getItem('mythosForgeLastUserMessage'); // Corrected key
 
                 if (savedPersona) personaInput.value = savedPersona;
                 if (savedMaxHistory) maxHistoryInput.value = savedMaxHistory;
                 if (savedLastUserMessage) lastUserMessageText = savedLastUserMessage;
 
+                chatOutput.innerHTML = ''; // Clear before loading
                 if (savedChatHistory) {
                     conversationHistoryForAPI = JSON.parse(savedChatHistory);
-                    chatOutput.innerHTML = ''; 
-                    conversationHistoryForAPI.forEach(msg => {
-                        if (msg.role === 'user') {
-                            displayMessage(msg.parts[0].text, 'User');
-                        } else if (msg.role === 'model') {
-                            displayMessage(msg.parts[0].text, 'AI');
-                        }
-                    });
-                } else {
-                    displayMessage("Set my persona, adjust history length, and send a message!", 'AI', 'initial-ai-message');
+                    if (conversationHistoryForAPI.length > 0) {
+                        conversationHistoryForAPI.forEach(msg => {
+                            if (msg.role === 'user') {
+                                displayMessage(msg.parts[0].text, 'User');
+                            } else if (msg.role === 'model') {
+                                displayMessage(msg.parts[0].text, 'AI');
+                            }
+                        });
+                    } else { // History was saved but empty
+                         displayMessage(initialAIMessage, 'AI', 'initial-ai-message');
+                    }
+                } else { // No history saved at all
+                     displayMessage(initialAIMessage, 'AI', 'initial-ai-message');
                 }
             }
             
@@ -179,7 +189,7 @@
                 chatOutput.scrollTop = chatOutput.scrollHeight; 
             }
 
-            function logToUIError(errorMessage) { // Renamed for clarity
+            function logToUIError(errorMessage) { 
                 if (!errorLogOutput) { console.error("logToUIError called but errorLogOutput is not available."); return; }
                 const errorElement = document.createElement('div');
                 errorElement.className = 'error-message'; 
@@ -189,8 +199,9 @@
             }
 
             async function fetchWithRetries(url, options, totalRetries = 3) {
+                // ... (fetchWithRetries function remains the same as previous working version)
                 let attempt = 0;
-                let currentBackoff = 1000; // Initial backoff 1 second
+                let currentBackoff = 1000; 
 
                 while (attempt <= totalRetries) {
                     attempt++;
@@ -200,44 +211,39 @@
                     try {
                         const response = await fetch(url, options);
                         if (response.ok) {
-                            return await response.json(); // Success
+                            return await response.json(); 
                         }
 
-                        // If response is not ok, check if it's a retryable error
                         const retryableStatuses = [500, 502, 503, 504];
                         if (retryableStatuses.includes(response.status) && attempt <= totalRetries) {
                             const errorTextForConsole = await response.text().catch(() => `Status ${response.status}`);
                             console.warn(`API Error (${response.status}): ${errorTextForConsole}. Retrying in ${currentBackoff / 1000}s... (${totalRetries - attempt +1} retries left)`);
                             await new Promise(resolve => setTimeout(resolve, currentBackoff));
-                            currentBackoff *= 2; // Exponential backoff
-                            continue; // Go to next iteration of the while loop
+                            currentBackoff *= 2; 
+                            continue; 
                         }
                         
-                        // If not retryable or retries exhausted, parse error and throw
                         const errorData = await response.json().catch(() => ({ 
                             error: `Request failed with status ${response.status}: ${response.statusText || 'Unknown server error'}` 
                         }));
-                        throw errorData; // This will be caught by the outer catch block
+                        throw errorData; 
 
                     } catch (networkOrThrownError) {
-                        // This catches initial network errors (fetch itself fails) OR errors deliberately thrown above
                         if (attempt <= totalRetries && (networkOrThrownError.message?.includes('Failed to fetch') || networkOrThrownError.name === 'AbortError')) {
                             console.warn(`Network Error: ${networkOrThrownError.message}. Retrying in ${currentBackoff / 1000}s... (${totalRetries - attempt + 1} retries left)`);
                             await new Promise(resolve => setTimeout(resolve, currentBackoff));
                             currentBackoff *= 2;
-                            continue; // Go to next iteration
+                            continue; 
                         }
-                        // If retries exhausted or it's an error re-thrown from the !response.ok block
                         console.error("Fetch with retries final error:", networkOrThrownError);
-                        throw networkOrThrownError; // Re-throw to be caught by getAIResponse
+                        throw networkOrThrownError; 
                     }
                 }
-                // Should not be reached if logic is correct, but as a fallback:
                 throw new Error("Max retries reached without success.");
             }
 
-
             async function getAIResponse(userMessageTextForAPI, isContinuation = false) {
+                // ... (getAIResponse function remains mostly the same, ensure saveToLocalStorage is called)
                 if (!isContinuation) {
                     conversationHistoryForAPI.push({ role: "user", parts: [{ text: userMessageTextForAPI }] });
                 }
@@ -256,8 +262,6 @@
                 console.log("Sending persona:", personaValue);
                 console.log("Sending conversation history for API call:", JSON.stringify(historyToSend, null, 2));
 
-                // Loading indicator is now handled inside fetchWithRetries
-
                 try {
                     const payloadToProxy = {
                         history: historyToSend, 
@@ -268,7 +272,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', },
                         body: JSON.stringify(payloadToProxy)
-                    }); // fetchWithRetries will handle showing/hiding loading per attempt
+                    }); 
                     
                     if (result.aiMessage) {
                         const aiResponseText = result.aiMessage;
@@ -286,12 +290,13 @@
                     const errorMessage = error.error || error.message || "An unknown error occurred after retries.";
                     logToUIError(errorMessage); 
                 } finally {
-                    loadingIndicator.classList.add('hidden'); // Ensure loading indicator is hidden finally
+                    loadingIndicator.classList.add('hidden'); 
                     saveToLocalStorage(); 
                 }
             }
 
             function handleSendMessage() {
+                // ... (same as before)
                 if (!messageInput) return; 
                 const messageText = messageInput.value.trim();
                 if (messageText) {
@@ -303,6 +308,7 @@
             }
             
             function handleResendMessage() {
+                // ... (same as before)
                 if (lastUserMessageText) {
                     console.log("Resending last user message to AI:", lastUserMessageText);
                     getAIResponse(lastUserMessageText, true); 
@@ -312,26 +318,22 @@
             }
 
             function handleRerollAI() {
+                // ... (same as before)
                 if (conversationHistoryForAPI.length < 1) { 
                     logToUIError("Not enough history to identify user message for AI reroll.");
                     return;
                 }
-                
                 let lastUserMessageForRerollText = null;
                 let lastAiBubbleToRemove = lastAIResponseBubble; 
-
                 if (conversationHistoryForAPI.length >= 2 && 
                     conversationHistoryForAPI[conversationHistoryForAPI.length - 1].role === 'model' &&
                     conversationHistoryForAPI[conversationHistoryForAPI.length - 2].role === 'user') {
-                    
                     lastUserMessageForRerollText = conversationHistoryForAPI[conversationHistoryForAPI.length - 2].parts[0].text;
                     conversationHistoryForAPI.pop(); 
-
                 } else if (conversationHistoryForAPI[conversationHistoryForAPI.length - 1].role === 'user') {
                     lastUserMessageForRerollText = conversationHistoryForAPI[conversationHistoryForAPI.length - 1].parts[0].text;
                     lastAiBubbleToRemove = null; 
                 }
-
                 if (lastUserMessageForRerollText) {
                     if (lastAiBubbleToRemove && lastAiBubbleToRemove.parentNode === chatOutput) {
                         chatOutput.removeChild(lastAiBubbleToRemove);
@@ -357,12 +359,27 @@
                 if(errorLogOutput) errorLogOutput.innerHTML = '';
             }
 
+            function handleClearChatHistory() {
+                if (confirm("Are you sure you want to clear the entire chat history? This cannot be undone.")) {
+                    chatOutput.innerHTML = ''; // Clear UI
+                    conversationHistoryForAPI = []; // Reset API history array
+                    lastUserMessageText = ""; // Reset last user message
+                    lastAIResponseBubble = null; // Reset last AI bubble reference
+                    localStorage.removeItem('mythosForgeChatHistory'); // Clear from local storage
+                    localStorage.removeItem('mythosForgeLastUserMessage');
+                    // Optionally, display the initial AI greeting again
+                    displayMessage(initialAIMessage, 'AI', 'initial-ai-message');
+                    console.log("Chat history cleared.");
+                }
+            }
+
             // --- Event Listeners ---
             if (sendButton) sendButton.addEventListener('click', handleSendMessage);
             if (messageInput) messageInput.addEventListener('keypress', function(event) { if (event.key === 'Enter') handleSendMessage(); });
             if (resendButton) resendButton.addEventListener('click', handleResendMessage);
             if (rerollAIButton) rerollAIButton.addEventListener('click', handleRerollAI);
             if (clearErrorLogButton) clearErrorLogButton.addEventListener('click', handleClearErrorLog);
+            if (clearChatHistoryButton) clearChatHistoryButton.addEventListener('click', handleClearChatHistory); // New
 
             loadFromLocalStorage();
 
@@ -374,27 +391,30 @@
 </html>
 ```
 
-**Key Changes in this Version's JavaScript:**
+**Key Changes in this Version:**
 
-1.  **Renamed `displayError` to `logToUIError`:** To be more explicit about its purpose.
-2.  **Modified `fetchWithRetries(url, options, totalRetries = 3)`:**
-    * It now uses a `while` loop for retries, making the attempt count clearer.
-    * `loadingIndicator.textContent` is updated to show the current attempt number.
-    * **Console Logging for Retries:** When a retryable error occurs (500, 502, 503, 504, or network errors like "Failed to fetch"), it logs a message to the `console.warn` like: `API Error (502): [details]. Retrying in Xs... (Y retries left)`. It does *not* call `logToUIError` during these intermediate retry attempts.
-    * **Final Error Handling:** If all retries are exhausted, or if a non-retryable HTTP error occurs, it `throw`s an error object.
-3.  **Modified `getAIResponse()`:**
-    * The `catch` block in `getAIResponse` now catches the *final* error thrown by `fetchWithRetries`.
-    * It then calls `logToUIError(errorMessage)` to display this final error in your UI error log.
-4.  **Loading Indicator:** The `loadingIndicator` is shown at the start of each attempt in `fetchWithRetries` and hidden in the `finally` block of `getAIResponse` (ensuring it's hidden even if all retries fail).
+1.  **HTML:**
+    * Added a "Clear Chat History" button in the settings sidebar:
+        ```html
+        <div class="mt-3">
+             <button id="clear-chat-history-button" class="w-full text-xs bg-amber-500 hover:bg-amber-600 text-white py-2 px-3 rounded">Clear Chat History</button>
+        </div>
+        ```
+2.  **JavaScript:**
+    * **`clearChatHistoryButton` element fetched.**
+    * **`initialAIMessage` constant:** Defined the default greeting message.
+    * **Modified `loadFromLocalStorage()`:**
+        * If `savedChatHistory` is empty or not found, it now calls `displayMessage(initialAIMessage, 'AI', 'initial-ai-message');` to show the default greeting.
+        * Corrected `localStorage.getItem('mythosForgeLastError')` to `localStorage.getItem('mythosForgeLastUserMessage')` to match `saveToLocalStorage`.
+    * **New `handleClearChatHistory()` function:**
+        * Uses `confirm()` to ask the user for confirmation before clearing (important!).
+        * If confirmed:
+            * Clears the `chatOutput.innerHTML`.
+            * Resets `conversationHistoryForAPI` to an empty array.
+            * Resets `lastUserMessageText` and `lastAIResponseBubble`.
+            * Removes `mythosForgeChatHistory` and `mythosForgeLastUserMessage` from local storage.
+            * Calls `displayMessage()` to show the initial AI greeting again.
+    * Event listener added for `clearChatHistoryButton`.
+    * Corrected a typo in `saveToLocalStorage`: `mythosForgeLastError` changed to `mythosForgeLastUserMessage` to match the load function.
 
-**How it should work now:**
-
-* When you send a message:
-    * The "AI is thinking... (Attempt 1 of 4)" message appears.
-    * If the first call to your proxy (and then to Gemini) fails with a 502:
-        * You should see a warning in your **browser's developer console** (not the UI error log) indicating a retry is happening.
-        * The loading indicator will update to "AI is thinking... (Attempt 2 of 4)".
-        * This will repeat for up to `totalRetries` (default 3 additional attempts after the first one).
-    * Only if *all* attempts fail will the final error message be displayed in your UI's "Error Log" section.
-
-This should give you the behavior you're looking for: silent retries for transient issues, with feedback in the console, and only the final unrecoverable error shown to the user in the dedicated l
+This should give you the "Clear Chat History" functionality you're looking for, making it easier to start new test sessions clean
