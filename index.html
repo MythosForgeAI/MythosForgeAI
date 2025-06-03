@@ -25,27 +25,49 @@
         }
         .chat-bubble { max-width: 80%; padding: 10px 15px; border-radius: 18px; margin-bottom: 10px; word-wrap: break-word; line-height: 1.5; }
         .user-bubble { background-color: #c8e6c9; align-self: flex-end; border-bottom-right-radius: 5px; }
-        .ai-bubble { background-color: #e0e0e0; align-self: flex-start; border-bottom-left-radius: 5px; }
+        .ai-bubble { background-color: #e0e0e0; align-self: flex-start; border-bottom-left-radius: 5px; position: relative; } /* Added position relative for reroll button */
         .message-container { display: flex; flex-direction: column; }
         .settings-input { padding: 10px; border: 1px solid #D1D5DB; border-radius: 8px; margin-bottom: 8px; width: 100%; box-sizing: border-box; }
         #error-log-output {
-            max-height: 100px; /* Limit height of error log */
+            max-height: 100px; 
             overflow-y: auto;
-            border: 1px solid #fecaca; /* Light red border */
+            border: 1px solid #fecaca; 
             padding: 8px;
             margin-top: 10px;
             border-radius: 8px;
-            background-color: #fff5f5; /* Lighter red background */
+            background-color: #fff5f5; 
         }
         .error-message {
             padding: 4px;
-            font-size: 0.875rem; /* text-sm */
-            color: #b91c1c; /* red-700 */
-            background-color: #fee2e2; /* red-100 */
+            font-size: 0.875rem; 
+            color: #b91c1c; 
+            background-color: #fee2e2; 
             border-radius: 4px;
             margin-bottom: 4px;
             word-wrap: break-word;
         }
+        /* Style for a reroll button that could appear next to AI messages - more advanced */
+        /* .reroll-ai-msg-btn {
+            position: absolute;
+            bottom: -5px;
+            right: -5px;
+            background-color: #cbd5e1;
+            color: #475569;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        .ai-bubble:hover .reroll-ai-msg-btn {
+            opacity: 1;
+        } */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     </style>
 </head>
@@ -76,19 +98,22 @@
 
             <div class="flex-1 flex flex-col bg-white overflow-hidden">
                 <div id="chat-output" class="flex-1 p-4 md:p-6 space-y-3 overflow-y-auto message-container">
-                    <div class="chat-bubble ai-bubble">
+                    <div class="chat-bubble ai-bubble" data-message-id="initial-ai-message">
                         Set my persona, adjust history length, and send a message!
-                    </div>
+                        </div>
                 </div>
 
                 <div class="bg-gray-100 p-3 md:p-4 border-t border-gray-300">
                     <div class="flex items-center space-x-2 md:space-x-3">
                         <input type="text" id="message-input" class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none text-sm md:text-base" placeholder="Type your message...">
-                        <button id="send-button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 md:px-6 rounded-lg transition duration-150 ease-in-out text-sm md:text-base">
+                        <button id="send-button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-3 md:px-4 rounded-lg transition duration-150 ease-in-out text-sm md:text-base">
                             Send
                         </button>
-                        <button id="resend-button" class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-4 md:px-6 rounded-lg transition duration-150 ease-in-out text-sm md:text-base">
-                            Resend
+                        <button id="resend-button" title="Resend last user message" class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-3 md:px-4 rounded-lg transition duration-150 ease-in-out text-sm md:text-base">
+                            Resend User
+                        </button>
+                        <button id="reroll-ai-button" title="Reroll last AI response" class="bg-teal-500 hover:bg-teal-600 text-white font-semibold py-3 px-3 md:px-4 rounded-lg transition duration-150 ease-in-out text-sm md:text-base">
+                            Reroll AI
                         </button>
                     </div>
                 </div>
@@ -103,72 +128,90 @@
             const sendButton = document.getElementById('send-button');
             const personaInput = document.getElementById('persona-input'); 
             const maxHistoryInput = document.getElementById('max-history-input'); 
-            const errorLogOutput = document.getElementById('error-log-output'); // New
-            const resendButton = document.getElementById('resend-button'); // New
+            const errorLogOutput = document.getElementById('error-log-output');
+            const resendButton = document.getElementById('resend-button');
+            const rerollAIButton = document.getElementById('reroll-ai-button'); // New
 
             // --- Element Existence Checks ---
-            if (!chatOutput) console.error("Chat output element not found!");
-            if (!messageInput) console.error("Message input element not found!");
-            if (!sendButton) console.error("Send button element not found!");
-            if (!personaInput) console.error("Persona input element not found!");
-            if (!maxHistoryInput) console.error("Max history input element not found!");
-            if (!errorLogOutput) console.error("Error log output element not found!");
-            if (!resendButton) console.error("Resend button element not found!");
+            if (!chatOutput || !messageInput || !sendButton || !personaInput || !maxHistoryInput || !errorLogOutput || !resendButton || !rerollAIButton) {
+                console.error("One or more critical UI elements are missing!");
+                // Optionally, disable buttons or show a general error message on the page
+                if(sendButton) sendButton.disabled = true;
+                if(resendButton) resendButton.disabled = true;
+                if(rerollAIButton) rerollAIButton.disabled = true;
+                return; // Stop script execution if critical elements are missing
+            }
 
             let conversationHistoryForAPI = []; 
-            let lastUserMessageText = ""; // To store the last sent user message
+            let lastUserMessageText = ""; 
+            let lastAIResponseBubble = null; // To keep track of the last AI message bubble for removal
 
-            /**
-             * Displays a regular message in the chat output.
-             */
-            function displayMessage(messageText, sender) {
-                // ... (same as before)
-                if (!chatOutput) { console.error("displayMessage called but chatOutput element is not available."); return; }
+            function displayMessage(messageText, sender, messageId = null) {
+                if (!chatOutput) { console.error("displayMessage called but chatOutput is not available."); return; }
                 const messageElement = document.createElement('div');
                 messageElement.classList.add('chat-bubble');
+                if (messageId) {
+                    messageElement.dataset.messageId = messageId; // For potential future use
+                }
+
                 if (sender === 'User') {
                     messageElement.classList.add('user-bubble');
                     messageElement.textContent = `You: ${messageText}`;
                 } else {
                     messageElement.classList.add('ai-bubble');
                     messageElement.textContent = `AI: ${messageText}`;
+                    lastAIResponseBubble = messageElement; // Store reference to this AI bubble
+                    // Example of adding a per-message reroll (more advanced, for later)
+                    // const rerollBtn = document.createElement('button');
+                    // rerollBtn.innerHTML = '&#x21BB;'; // Refresh symbol
+                    // rerollBtn.className = 'reroll-ai-msg-btn';
+                    // rerollBtn.onclick = () => handleRerollSpecificAIMessage(messageElement, conversationHistoryForAPI.length -1 ); // Pass index
+                    // messageElement.appendChild(rerollBtn);
                 }
                 chatOutput.appendChild(messageElement);
                 chatOutput.scrollTop = chatOutput.scrollHeight; 
             }
 
-            /**
-             * Displays an error message in the dedicated error log area.
-             */
             function displayError(errorMessage) {
                 if (!errorLogOutput) { console.error("displayError called but errorLogOutput is not available."); return; }
                 const errorElement = document.createElement('div');
-                errorElement.className = 'error-message'; // Use the new CSS class
+                errorElement.className = 'error-message'; 
                 errorElement.textContent = `[${new Date().toLocaleTimeString()}] ${errorMessage}`;
                 errorLogOutput.appendChild(errorElement);
                 errorLogOutput.scrollTop = errorLogOutput.scrollHeight;
             }
 
-            async function getAIResponse(userMessageText) {
-                conversationHistoryForAPI.push({ role: "user", parts: [{ text: userMessageText }] });
+            async function getAIResponse(userMessageTextForAPI, isReroll = false) {
+                // If it's not a reroll, the user's message is new and needs to be added to history.
+                // If it IS a reroll, the user's message is already the last "user" entry in history.
+                if (!isReroll) {
+                    conversationHistoryForAPI.push({ role: "user", parts: [{ text: userMessageTextForAPI }] });
+                }
 
                 const yourNetlifyProxyUrl = "/.netlify/functions/llm-proxy"; 
                 const personaValue = personaInput.value.trim(); 
                 const maxHistoryTurns = parseInt(maxHistoryInput.value, 10) || 10; 
                 const maxHistoryItems = maxHistoryTurns * 2; 
 
+                // The history sent to the API should be the current state of conversationHistoryForAPI
+                // (which for a reroll, has had the previous AI response removed).
                 let historyToSend = [...conversationHistoryForAPI]; 
                 if (historyToSend.length > maxHistoryItems) {
                     historyToSend = historyToSend.slice(historyToSend.length - maxHistoryItems);
                 }
                 
+                // If persona is present, and we are sending history, make sure persona is at the start
+                // This is handled by the proxy now, but good to be mindful
+                let actualPayloadHistory = historyToSend;
+                // The proxy now handles prepending the persona if it's sent.
+
                 console.log("Attempting to send to Netlify proxy:", yourNetlifyProxyUrl);
                 console.log("Sending persona:", personaValue);
-                console.log("Sending conversation history (trimmed for API call):", JSON.stringify(historyToSend, null, 2));
+                console.log("Sending conversation history (trimmed for API call):", JSON.stringify(actualPayloadHistory, null, 2));
 
                 try {
                     const payloadToProxy = {
-                        history: historyToSend, 
+                        history: actualPayloadHistory, 
                         persona: personaValue 
                     };
 
@@ -178,105 +221,154 @@
                         body: JSON.stringify(payloadToProxy)
                     });
 
-                    const result = await response.json(); // Try to parse JSON regardless of response.ok first
+                    const result = await response.json(); 
 
                     if (!response.ok) {
                         const errorMsg = result.error || `Request to AI service failed (${response.status}, ${response.statusText})`;
                         console.error(`Error from proxy (Status ${response.status}):`, result);
-                        displayError(errorMsg); // Display in error log
-                        // Do NOT add this error to conversationHistoryForAPI or display as AI message
-                        return; // Stop further processing for this turn
+                        displayError(errorMsg); 
+                        return; 
                     }
                     
                     if (result.aiMessage) {
                         const aiResponseText = result.aiMessage;
-                        displayMessage(aiResponseText, 'AI');
+                        displayMessage(aiResponseText, 'AI', `ai-${Date.now()}`); // Give AI messages a unique ID
                         conversationHistoryForAPI.push({ role: "model", parts: [{ text: aiResponseText }] });
                     } else if (result.error) {
                         console.error("Error message from proxy function:", result.error);
-                        displayError(`Error from AI service: ${result.error}`); // Display in error log
+                        displayError(`Error from AI service: ${result.error}`); 
                     } else {
                         console.error("Unexpected response structure from proxy:", result);
-                        displayError("Received an unexpected response from the AI service."); // Display in error log
+                        displayError("Received an unexpected response from the AI service."); 
                     }
                 } catch (error) {
                     console.error("Network or fetch error calling your backend proxy:", error);
-                    displayError(`Network error or proxy is unreachable: ${error.message}`); // Display in error log
+                    displayError(`Network error or proxy is unreachable: ${error.message}`); 
                 }
             }
 
             function handleSendMessage() {
-                if (!messageInput) { console.error("handleSendMessage called but messageInput element is not available."); return; }
+                if (!messageInput) return; 
                 const messageText = messageInput.value.trim();
                 if (messageText) {
-                    displayMessage(messageText, 'User'); 
-                    lastUserMessageText = messageText; // Store for resend
+                    displayMessage(messageText, 'User', `user-${Date.now()}`); 
+                    lastUserMessageText = messageText; 
                     messageInput.value = ''; 
-                    getAIResponse(messageText); 
+                    getAIResponse(messageText, false); // false indicates it's not a reroll
                 }
             }
             
             function handleResendMessage() {
                 if (lastUserMessageText) {
-                    console.log("Resending last message:", lastUserMessageText);
-                    displayMessage(lastUserMessageText, 'User'); // Show it in chat again
-                    getAIResponse(lastUserMessageText);      // Send to AI
+                    console.log("Resending last user message:", lastUserMessageText);
+                    displayMessage(lastUserMessageText, 'User', `user-${Date.now()}-resend`); 
+                    // When resending, the lastUserMessageText is added again to history by getAIResponse
+                    getAIResponse(lastUserMessageText, false); // Treat as a new send of that message
                 } else {
                     displayError("No last user message to resend.");
-                    console.log("No last user message to resend.");
+                }
+            }
+
+            function handleRerollAI() {
+                if (conversationHistoryForAPI.length < 2) { // Need at least one user message and one AI response
+                    displayError("Not enough conversation history to reroll an AI response.");
+                    return;
+                }
+
+                // Find the last AI response and the user message that prompted it
+                let lastAiIndex = -1;
+                for (let i = conversationHistoryForAPI.length - 1; i >= 0; i--) {
+                    if (conversationHistoryForAPI[i].role === "model") {
+                        lastAiIndex = i;
+                        break;
+                    }
+                }
+
+                if (lastAiIndex === -1 || lastAiIndex === 0) { // No AI response found, or AI spoke first (unlikely with current flow)
+                    displayError("No previous AI response found to reroll.");
+                    return;
+                }
+                
+                // The user message is before the last AI message
+                const userMessageToResubmit = conversationHistoryForAPI[lastAiIndex - 1];
+
+                if (userMessageToResubmit && userMessageToResubmit.role === "user") {
+                    // Remove the last AI response from history
+                    conversationHistoryForAPI.splice(lastAiIndex, 1); 
+
+                    // Remove the last AI message bubble from the display
+                    if (lastAIResponseBubble && lastAIResponseBubble.parentNode === chatOutput) {
+                        chatOutput.removeChild(lastAIResponseBubble);
+                        lastAIResponseBubble = null; // Clear the reference
+                    } else {
+                        // Fallback if lastAIResponseBubble isn't set or already removed: find last .ai-bubble
+                        const allAiBubbles = chatOutput.querySelectorAll('.ai-bubble');
+                        if (allAiBubbles.length > 0) {
+                            chatOutput.removeChild(allAiBubbles[allAiBubbles.length - 1]);
+                        }
+                    }
+                    
+                    // Display the user message again to show what we are responding to (optional, could be confusing)
+                    // displayMessage(userMessageToResubmit.parts[0].text, 'User'); 
+                    
+                    console.log("Rerolling AI response for user message:", userMessageToResubmit.parts[0].text);
+                    // Call getAIResponse. It will take the userMessageToResubmit.parts[0].text and add it to history again.
+                    // So, we need to ensure the history sent to getAIResponse is correct.
+                    // The history *before* the user message we want to resubmit is needed.
+                    // For a simple reroll, we can just pop the last user message (which prompted the AI we removed)
+                    // and then let getAIResponse re-add it.
+                    
+                    // The conversationHistoryForAPI now ends with the user message that prompted the AI we removed.
+                    // We want to effectively call getAIResponse with that user message again.
+                    // The getAIResponse function expects the *text* of the user message.
+                    getAIResponse(userMessageToResubmit.parts[0].text, true); // true indicates it's a reroll
+
+                } else {
+                    displayError("Could not find the preceding user message to reroll the AI response.");
                 }
             }
 
             // --- Event Listeners ---
-            if (sendButton) {
-                sendButton.addEventListener('click', handleSendMessage);
-            } else {
-                console.error("Send button not found, cannot add click listener.");
-            }
-
-            if (messageInput) {
-                messageInput.addEventListener('keypress', function(event) {
-                    if (event.key === 'Enter') {
-                        handleSendMessage();
-                    }
-                });
-            } else {
-                console.error("Message input not found, cannot add keypress listener.");
-            }
-
-            if (resendButton) {
-                resendButton.addEventListener('click', handleResendMessage);
-            } else {
-                console.error("Resend button not found, cannot add click listener.");
-            }
+            if (sendButton) sendButton.addEventListener('click', handleSendMessage);
+            if (messageInput) messageInput.addEventListener('keypress', function(event) { if (event.key === 'Enter') handleSendMessage(); });
+            if (resendButton) resendButton.addEventListener('click', handleResendMessage);
+            if (rerollAIButton) rerollAIButton.addEventListener('click', handleRerollAI); // New
         });
     </script>
 </body>
 </html>
 ```
 
-**Key Changes in this version:**
+**Key Changes in this Version:**
 
-1.  **HTML Structure:**
-    * A new `<div id="error-log-output">` has been added within the settings sidebar.
-    * A new `<button id="resend-button">Resend</button>` has been added next to the "Send" button.
-2.  **CSS:**
-    * Basic styling for `#error-log-output` and `.error-message` to make the error log visible and distinct.
-3.  **JavaScript:**
-    * **`errorLogOutput` and `resendButton` elements:** These are now fetched by ID.
-    * **`lastUserMessageText` variable:** Added to store the last message typed by the user.
-    * **`displayError(errorMessage)` function:** A new function to append formatted error messages to the `error-log-output` div.
-    * **Modified `getAIResponse()`:**
-        * When `!response.ok` or a `catch` block is triggered, it now calls `displayError()` instead of `displayMessage()`.
-        * Error messages are **not** added to `conversationHistoryForAPI`.
-        * If an error occurs, it `return`s early to prevent adding a faulty AI response to the history.
-    * **Updated `handleSendMessage()`:** It now stores the `messageText` into `lastUserMessageText` before sending.
-    * **New `handleResendMessage()` function:** Called when the "Resend" button is clicked. It retrieves `lastUserMessageText`, displays it again as a user message (so it appears in the chat flow as if re-typed), and then calls `getAIResponse()` with it.
-    * Event listener added for the `resendButton`.
+1.  **HTML:**
+    * Added `<button id="reroll-ai-button" ...>Reroll AI</button>` in the input area.
+    * Slightly adjusted button padding for smaller screens.
+2.  **JavaScript:**
+    * **`rerollAIButton`:** Fetched by ID.
+    * **`lastAIResponseBubble` variable:** Added to keep a reference to the DOM element of the last AI message bubble, making it easier to remove. This is updated in `displayMessage` when an AI message is shown.
+    * **Modified `getAIResponse(userMessageTextForAPI, isReroll = false)`:**
+        * Added an `isReroll` parameter (defaults to `false`).
+        * If `isReroll` is `false` (a normal send), it pushes the `userMessageTextForAPI` to `conversationHistoryForAPI` as before.
+        * If `isReroll` is `true`, it *doesn't* add the `userMessageTextForAPI` to history because it's assumed that message is already the last "user" entry (after the previous AI response was popped).
+    * **New `handleRerollAI()` function:**
+        * Checks if there's enough history to reroll (at least one user message and one AI response).
+        * Finds the index of the last AI message (`role: "model"`) in `conversationHistoryForAPI`.
+        * Identifies the user message that prompted that AI response (the item before it in history).
+        * Removes the last AI response from `conversationHistoryForAPI` using `splice()`.
+        * Removes the corresponding AI message bubble from the `chatOutput` div using `removeChild(lastAIResponseBubble)` or a fallback.
+        * Calls `getAIResponse()` again, passing the *text* of the user message that prompted the removed AI response, and sets `isReroll` to `true`.
+    * Event listener added for the `rerollAIButton`.
 
-After you replace your `index.html` with this code, commit, push, and let Netlify deploy:
-* Errors from the API or proxy should now appear in the "Error Log:" section in the sidebar.
-* The main chat area should only contain successful user-AI interactions.
-* The "Resend" button should allow you to easily retry your last typed message.
+**How the Reroll Logic Works (Simplified for Prototype):**
 
-This should make your testing process much clean
+1.  When you click "Reroll AI":
+2.  It looks at the `conversationHistoryForAPI`.
+3.  It finds the last message that was from the "model" (the AI).
+4.  It also finds the "user" message that came just before that AI message.
+5.  It removes the AI's message from the history array and from the screen.
+6.  It then calls `getAIResponse` again, essentially telling it to generate a new response to that *same previous user message*.
+
+This is a basic implementation. More advanced versions might store the different AI responses for a single user prompt, allowing you to cycle through them, but this gives you the core "try again" functionality.
+
+Remember to update your `index.html` on GitHub, let Netlify deploy, and then test it o
