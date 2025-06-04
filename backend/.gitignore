@@ -1,0 +1,41 @@
+# .gitignore
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+.Python
+env/
+
+# Virtual environment
+.venv/
+venv/
+/env
+
+# IDE and editor files
+.idea/             # IntelliJ IDEA / PyCharm
+*.iml              # IntelliJ IDEA module files
+.vscode/           # VS Code
+.DS_Store          # macOS specific
+Thumbs.db          # Windows specific
+
+# Project-specific temporary files
+*.log
+*.sqlite3          # If you ever use SQLite for local development
+.mypy_cache/       # Mypy type checker cache
+.pytest_cache/     # Pytest cache
+
+# Environment variables file
+.env               # Contains sensitive information, should not be committed
+
+# Uvicorn/FastAPI specific
+.uvicorn.pid       # Uvicorn process ID file (if generated)
+
+# Render specific (though Render usually handles this well)
+.render/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
