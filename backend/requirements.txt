@@ -2,3 +2,10 @@
 
 fastapi
 uvicorn
+python-dotenv
+
+# Core ORM and SQL toolkit
+SQLAlchemy==2.0.29 # (or the latest stable version)
+
+# PostgreSQL database driver
+psycopg2-binary==2.9.9 # (or the latest stable version)
